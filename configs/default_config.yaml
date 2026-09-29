@@ -1,0 +1,116 @@
+# Default Platform Configuration
+
+app:
+  name: "Crypto Intelligence Platform"
+  version: "0.1.0"
+  environment: "development"
+
+scoring_models:
+  core:
+    weights:
+      momentum: 0.25
+      relative_strength: 0.20
+      trend: 0.20
+      volume: 0.10
+      liquidity: 0.10
+      fundamentals: 0.10
+      risk: 0.05
+  altcoin:
+    weights:
+      momentum: 0.25
+      relative_strength: 0.20
+      trend: 0.15
+      volume: 0.15
+      liquidity: 0.10
+      fundamentals: 0.10
+      risk: 0.05
+  smallcap:
+    weights:
+      momentum: 0.20
+      relative_strength: 0.15
+      trend: 0.10
+      volume: 0.20
+      liquidity: 0.15
+      holder_structure: 0.15
+      risk: 0.05
+  meme:
+    weights:
+      momentum: 0.25
+      volume_acceleration: 0.20
+      liquidity: 0.15
+      relative_strength: 0.15
+      holder_structure: 0.10
+      attention_social: 0.10
+      risk: 0.05
+
+risk_limits:
+  max_portfolio_exposure_pct: 80.0
+  max_single_position_pct: 15.0
+  max_meme_exposure_pct: 5.0
+  max_sector_exposure_pct: 30.0
+  max_daily_loss_pct: 3.0
+  max_drawdown_limit_pct: 15.0
+  max_open_positions: 12
+
+paper_trading:
+  initial_capital_usd: 100000.0
+  base_currency: "USD"
+  maker_fee_bps: 2.0
+  taker_fee_bps: 5.0
+  default_slippage_bps: 5.0
+  latency_ms: 50
+
+ingestion:
+  default_timeframe: "1h"
+  supported_timeframes: ["5m", "15m", "1h", "4h", "1d"]
+  poll_interval_seconds: 60
+  rate_limit_calls_per_minute: 60
+  initial_assets:
+    - symbol: "BTC"
+      name: "Bitcoin"
+      asset_class: "CORE"
+      primary_sector: "Store of Value"
+      exchange: "binance"
+      market: "BTC/USDT"
+    - symbol: "ETH"
+      name: "Ethereum"
+      asset_class: "CORE"
+      primary_sector: "Layer 1"
+      exchange: "binance"
+      market: "ETH/USDT"
+    - symbol: "SOL"
+      name: "Solana"
+      asset_class: "ALTCOIN"
+      primary_sector: "Layer 1"
+      exchange: "binance"
+      market: "SOL/USDT"
+    - symbol: "BNB"
+      name: "BNB"
+      asset_class: "ALTCOIN"
+      primary_sector: "Exchange"
+      exchange: "binance"
+      market: "BNB/USDT"
+    - symbol: "NEAR"
+      name: "NEAR Protocol"
+      asset_class: "ALTCOIN"
+      primary_sector: "AI"
+      exchange: "binance"
+      market: "NEAR/USDT"
+    - symbol: "RENDER"
+      name: "Render"
+      asset_class: "ALTCOIN"
+      primary_sector: "DePIN"
+      exchange: "binance"
+      market: "RENDER/USDT"
+    - symbol: "DOGE"
+      name: "Dogecoin"
+      asset_class: "MEME"
+      primary_sector: "Meme"
+      exchange: "binance"
+      market: "DOGE/USDT"
+    - symbol: "PEPE"
+      name: "Pepe"
+      asset_class: "MEME"
+      primary_sector: "Meme"
+      exchange: "binance"
+      market: "PEPE/USDT"

@@ -1,0 +1,25 @@
+# Public Exchange Configurations
+exchanges:
+  binance:
+    id: "binance"
+    name: "Binance"
+    is_active: true
+    rate_limit_per_minute: 1200
+    supports_funding_rates: true
+    supports_open_interest: true
+
+  coinbase:
+    id: "coinbase"
+    name: "Coinbase"
+    is_active: true
+    rate_limit_per_minute: 600
+    supports_funding_rates: false
+    supports_open_interest: false
+
+  kraken:
+    id: "kraken"
+    name: "Kraken"
+    is_active: true
+    rate_limit_per_minute: 600
+    supports_funding_rates: false
+    supports_open_interest: false
