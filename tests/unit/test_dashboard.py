@@ -64,3 +64,31 @@ def test_plotly_chart_generators():
     fig_sector = create_sector_rotation_chart(sector_df)
     assert fig_sector is not None
     assert len(fig_sector.data) == 2
+
+
+def test_dashboard_backtest_integration():
+    """Verify DashboardDataLayer executes backtest and creates interactive equity/drawdown charts."""
+    from apps.dashboard.components.charts import (
+        create_equity_curve_chart,
+        create_underwater_drawdown_chart,
+    )
+
+    bt_res = DashboardDataLayer.run_backtest(
+        strategy_name="MomentumBreakout",
+        initial_capital=50000.0,
+        days=30,
+        slippage_model="fixed_bps",
+    )
+    assert bt_res is not None
+    assert "metrics" in bt_res
+    assert "cagr" in bt_res["metrics"]
+    assert "equity_df" in bt_res
+    assert not bt_res["equity_df"].empty
+
+    fig_equity = create_equity_curve_chart(bt_res["equity_df"], "MomentumBreakout")
+    assert fig_equity is not None
+    assert len(fig_equity.data) >= 1
+
+    fig_dd = create_underwater_drawdown_chart(bt_res["equity_df"])
+    assert fig_dd is not None
+    assert len(fig_dd.data) >= 1

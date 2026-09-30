@@ -222,3 +222,107 @@ class DashboardDataLayer:
                 return pd.DataFrame(data)
 
         return run_async(_query())
+
+    @classmethod
+    def run_backtest(
+        cls,
+        strategy_name: str = "MomentumBreakout",
+        initial_capital: float = 100000.0,
+        days: int = 90,
+        slippage_model: str = "market_impact",
+    ) -> dict:
+        """Execute a backtest simulation and return metrics, equity series, and trade logs."""
+        from datetime import timedelta
+
+        import numpy as np
+
+        from src.backtesting.engine import BacktestEngine
+        from src.backtesting.models import BacktestConfig, SlippageModelType
+        from src.backtesting.strategies import get_strategy
+
+        cls.ensure_seeded_data()
+        now = datetime.now(UTC)
+        start_date = now - timedelta(days=days)
+
+        slip_type = (
+            SlippageModelType.MARKET_IMPACT
+            if slippage_model == "market_impact"
+            else (SlippageModelType.FIXED_BPS if slippage_model == "fixed_bps" else SlippageModelType.NONE)
+        )
+
+        config = BacktestConfig(
+            strategy_name=strategy_name,
+            start_date=start_date,
+            end_date=now,
+            initial_capital=initial_capital,
+            slippage_model=slip_type,
+        )
+        strategy = get_strategy(strategy_name)
+
+        # Generate realistic multi-asset candle and feature series
+        symbols = ["BTC", "ETH", "SOL", "BNB", "NEAR", "RENDER", "DOGE"]
+        base_prices = {"BTC": 64000.0, "ETH": 3400.0, "SOL": 155.0, "BNB": 590.0, "NEAR": 5.20, "RENDER": 6.40, "DOGE": 0.125}
+        candles: dict[str, list[dict]] = {}
+        features: dict[str, list[dict]] = {}
+
+        for sym in symbols:
+            np.random.seed(abs(hash(sym + strategy_name)) % 1000000)
+            p0 = base_prices.get(sym, 10.0)
+            c_list = []
+            f_list = []
+            curr_p = p0
+
+            for d in range(days + 1):
+                t = start_date + timedelta(days=d)
+                ret = float(np.random.normal(0.002, 0.025))
+                open_p = curr_p
+                close_p = max(0.0001, curr_p * (1.0 + ret))
+                high_p = max(open_p, close_p) * (1.0 + abs(float(np.random.normal(0.0, 0.012))))
+                low_p = min(open_p, close_p) * (1.0 - abs(float(np.random.normal(0.0, 0.012))))
+                vol_usd = float(np.random.uniform(200000.0, 3000000.0))
+                curr_p = close_p
+
+                c_list.append({
+                    "time": t,
+                    "open": round(open_p, 4),
+                    "high": round(high_p, 4),
+                    "low": round(low_p, 4),
+                    "close": round(close_p, 4),
+                    "volume": round(vol_usd / close_p, 2),
+                    "volume_usd": round(vol_usd, 2),
+                })
+                f_list.append({
+                    "time": t,
+                    "return_30d": float(np.random.uniform(-0.08, 0.25)),
+                    "rs_btc_30d": float(np.random.uniform(-0.10, 0.20)),
+                    "ema20_ratio": float(np.random.uniform(0.96, 1.07)),
+                    "ema50_ratio": float(np.random.uniform(0.94, 1.09)),
+                    "adx_14": float(np.random.uniform(16.0, 35.0)),
+                    "volume_to_20d_avg": float(np.random.uniform(0.9, 2.2)),
+                    "volatility_adjusted_momentum": float(np.random.uniform(-0.5, 2.2)),
+                    "opportunity_score": float(np.random.uniform(45.0, 94.0)),
+                    "risk_flags": [],
+                })
+
+            candles[sym] = c_list
+            features[sym] = f_list
+
+        engine = BacktestEngine(config, strategy)
+        result = engine.run(historical_candles=candles, historical_features=features)
+
+        equity_df = pd.DataFrame(result.equity_curve)
+        if not equity_df.empty:
+            equity_df["time"] = pd.to_datetime(equity_df["time"])
+
+        trades_df = pd.DataFrame(result.trades)
+        if not trades_df.empty:
+            trades_df["entry_time"] = pd.to_datetime(trades_df["entry_time"]).dt.strftime("%Y-%m-%d %H:%M")
+            trades_df["exit_time"] = pd.to_datetime(trades_df["exit_time"]).dt.strftime("%Y-%m-%d %H:%M")
+
+        return {
+            "result_id": result.id,
+            "metrics": result.metrics,
+            "equity_df": equity_df,
+            "trades_df": trades_df,
+            "total_trades": result.total_trades,
+        }

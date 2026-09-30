@@ -1,0 +1,70 @@
+"""Quantitative backtesting and research engine namespace."""
+
+from src.backtesting.engine import BacktestEngine
+from src.backtesting.execution import ExecutionSimulator
+from src.backtesting.metrics import (
+    calculate_annualized_volatility,
+    calculate_cagr,
+    calculate_calmar_ratio,
+    calculate_drawdown_series,
+    calculate_max_drawdown,
+    calculate_sharpe_ratio,
+    calculate_sortino_ratio,
+    calculate_trade_metrics,
+    compute_complete_metrics,
+)
+from src.backtesting.models import (
+    BacktestConfig,
+    BacktestResult,
+    BacktestTradeRecord,
+    EquityPoint,
+    OrderSide,
+    OrderType,
+    PositionSide,
+    SignalAction,
+    SlippageModelType,
+    StrategySignal,
+)
+from src.backtesting.strategies import (
+    STRATEGY_REGISTRY,
+    BaseStrategy,
+    FactorRankStrategy,
+    MomentumBreakoutStrategy,
+    RelativeStrengthRotationStrategy,
+    TrendRegimeStrategy,
+    get_strategy,
+)
+from src.backtesting.walk_forward import WalkForwardAnalyzer, WalkForwardReport
+
+__all__ = [
+    "STRATEGY_REGISTRY",
+    "BacktestConfig",
+    "BacktestEngine",
+    "BacktestResult",
+    "BacktestTradeRecord",
+    "BaseStrategy",
+    "EquityPoint",
+    "ExecutionSimulator",
+    "FactorRankStrategy",
+    "MomentumBreakoutStrategy",
+    "OrderSide",
+    "OrderType",
+    "PositionSide",
+    "RelativeStrengthRotationStrategy",
+    "SignalAction",
+    "SlippageModelType",
+    "StrategySignal",
+    "TrendRegimeStrategy",
+    "WalkForwardAnalyzer",
+    "WalkForwardReport",
+    "calculate_annualized_volatility",
+    "calculate_cagr",
+    "calculate_calmar_ratio",
+    "calculate_drawdown_series",
+    "calculate_max_drawdown",
+    "calculate_sharpe_ratio",
+    "calculate_sortino_ratio",
+    "calculate_trade_metrics",
+    "compute_complete_metrics",
+    "get_strategy",
+]

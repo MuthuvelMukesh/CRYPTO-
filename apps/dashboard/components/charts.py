@@ -203,3 +203,93 @@ def create_sector_rotation_chart(sector_df: pd.DataFrame) -> go.Figure:
     )
 
     return fig
+
+
+def create_equity_curve_chart(
+    equity_df: pd.DataFrame,
+    strategy_name: str = "Strategy",
+    benchmark_name: str = "BTC Benchmark",
+) -> go.Figure:
+    """Create interactive Equity Curve comparing Strategy vs Benchmark."""
+    if equity_df.empty:
+        fig = go.Figure()
+        fig.add_annotation(text="No backtest equity data", showarrow=False, font={"size": 16, "color": "#94A3B8"})
+        fig.update_layout(paper_bgcolor="#0B0E17", plot_bgcolor="#0F1422")
+        return fig
+
+    fig = go.Figure()
+
+    # Strategy Equity Area
+    fig.add_trace(
+        go.Scatter(
+            x=equity_df["time"],
+            y=equity_df["equity"],
+            mode="lines",
+            name=f"Strategy: {strategy_name}",
+            line={"color": "#06B6D4", "width": 2.5},
+            fill="tozeroy",
+            fillcolor="rgba(6, 182, 212, 0.08)",
+        )
+    )
+
+    # Benchmark Equity
+    if "benchmark_equity" in equity_df.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=equity_df["time"],
+                y=equity_df["benchmark_equity"],
+                mode="lines",
+                name=f"Benchmark: {benchmark_name}",
+                line={"color": "#F59E0B", "width": 1.5, "dash": "dash"},
+            )
+        )
+
+    fig.update_layout(
+        title=f"<b>Portfolio Equity Trajectory</b> ({strategy_name} vs {benchmark_name})",
+        paper_bgcolor="#0B0E17",
+        plot_bgcolor="#0F1422",
+        font={"family": "Outfit, sans-serif", "color": "#94A3B8"},
+        xaxis={"gridcolor": "#1E293B", "title": "Date (UTC)"},
+        yaxis={"gridcolor": "#1E293B", "title": "Portfolio Value (USD)", "tickprefix": "$"},
+        hovermode="x unified",
+        margin={"l": 50, "r": 30, "t": 60, "b": 40},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
+        height=450,
+    )
+
+    return fig
+
+
+def create_underwater_drawdown_chart(equity_df: pd.DataFrame) -> go.Figure:
+    """Create interactive Underwater Drawdown chart."""
+    if equity_df.empty or "drawdown_pct" not in equity_df.columns:
+        fig = go.Figure()
+        fig.update_layout(paper_bgcolor="#0B0E17", plot_bgcolor="#0F1422")
+        return fig
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scatter(
+            x=equity_df["time"],
+            y=equity_df["drawdown_pct"],
+            mode="lines",
+            name="Drawdown",
+            line={"color": "#EF4444", "width": 1.5},
+            fill="tozeroy",
+            fillcolor="rgba(239, 68, 68, 0.15)",
+        )
+    )
+
+    fig.update_layout(
+        title="<b>Underwater Drawdown Profile</b> (% decline from all-time peak)",
+        paper_bgcolor="#0B0E17",
+        plot_bgcolor="#0F1422",
+        font={"family": "Outfit, sans-serif", "color": "#94A3B8"},
+        xaxis={"gridcolor": "#1E293B", "title": "Date (UTC)"},
+        yaxis={"gridcolor": "#1E293B", "title": "Drawdown (%)", "ticksuffix": "%"},
+        margin={"l": 50, "r": 30, "t": 60, "b": 40},
+        height=260,
+    )
+
+    return fig

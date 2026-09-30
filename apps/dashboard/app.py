@@ -5,8 +5,10 @@ import streamlit as st
 
 from apps.dashboard.components.charts import (
     create_candlestick_chart,
+    create_equity_curve_chart,
     create_factor_radar_chart,
     create_sector_rotation_chart,
+    create_underwater_drawdown_chart,
 )
 from apps.dashboard.components.explainability import render_explainability_card
 from apps.dashboard.data_layer import DashboardDataLayer
@@ -414,28 +416,109 @@ elif nav_page == "💼 Paper Portfolio":
 elif nav_page == "🧪 Backtest Lab":
     st.subheader("Quantitative Strategy Backtesting & Walk-Forward Validation")
 
-    b_col1, b_col2, b_col3 = st.columns(3)
+    b_col1, b_col2, b_col3, b_col4 = st.columns([3, 2, 2, 2])
     with b_col1:
-        st.selectbox("Strategy Baseline", ["Momentum Breakout V1", "Relative Strength Alpha V1", "Meme Momentum V1"])
+        strategy_options = [
+            "MomentumBreakout",
+            "TrendRegimeFilter",
+            "RelativeStrengthRotation",
+            "FactorRankModel",
+        ]
+        sel_strat = st.selectbox("Strategy Model", strategy_options, index=0)
+
     with b_col2:
-        st.selectbox("Universe Selection", ["Top 50 Point-In-Time", "Core (BTC/ETH)", "Altcoin Mid-Cap"])
+        init_capital = st.number_input("Initial Capital ($)", min_value=1000.0, max_value=1000000.0, value=100000.0, step=10000.0)
+
     with b_col3:
-        st.selectbox("Timeframe", ["1h", "4h", "1d"])
+        lookback_days = st.selectbox("Simulation Window", [30, 60, 90, 180], index=2)
 
-    st.markdown("---")
-    st.markdown("#### Baseline Performance Snapshot")
+    with b_col4:
+        slip_choice = st.selectbox("Slippage Model", ["market_impact", "fixed_bps", "none"], index=0)
 
-    kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
-    with kpi1:
-        st.metric(label="Total Return", value="+142.8%", delta="CAGR: 44.2%")
-    with kpi2:
-        st.metric(label="Sharpe Ratio", value="1.84", delta="Risk-Free: 0%")
-    with kpi3:
-        st.metric(label="Sortino Ratio", value="2.48", delta="Downside: 14.2%")
-    with kpi4:
-        st.metric(label="Max Drawdown", value="-18.4%", delta="Calmar: 2.40")
-    with kpi5:
-        st.metric(label="Win Rate", value="58.4%", delta="Profit Factor: 1.76")
+    # Simulation execution
+    run_btn = st.button("🚀 Run Backtest Simulation", use_container_width=True)
+
+    # Run backtest or use cached session result
+    if run_btn or "backtest_result" not in st.session_state or st.session_state.get("last_strat") != sel_strat:
+        with st.spinner(f"Simulating event-driven execution for {sel_strat}..."):
+            bt_data = DashboardDataLayer.run_backtest(
+                strategy_name=sel_strat,
+                initial_capital=float(init_capital),
+                days=int(lookback_days),
+                slippage_model=slip_choice,
+            )
+            st.session_state["backtest_result"] = bt_data
+            st.session_state["last_strat"] = sel_strat
+
+    bt_res = st.session_state.get("backtest_result")
+    if bt_res:
+        metrics = bt_res["metrics"]
+        equity_df = bt_res["equity_df"]
+        trades_df = bt_res["trades_df"]
+
+        st.markdown("---")
+        st.markdown(f"#### Performance Attribution Snapshot: **{sel_strat}**")
+
+        kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+        tot_ret = metrics.get("total_return_pct", 0.0)
+        cagr = metrics.get("cagr", 0.0)
+        bm_ret = metrics.get("benchmark_return_pct", 0.0)
+        sharpe = metrics.get("sharpe_ratio", 0.0)
+        sortino = metrics.get("sortino_ratio", 0.0)
+        max_dd = metrics.get("max_drawdown_pct", 0.0)
+        calmar = metrics.get("calmar_ratio", 0.0)
+        win_rate = metrics.get("win_rate", 0.0)
+        pf = metrics.get("profit_factor", 0.0)
+
+        with kpi1:
+            st.metric(
+                label="Total Return",
+                value=f"{tot_ret:+.2f}%",
+                delta=f"Excess Alpha: {tot_ret - bm_ret:+.1f}% vs BTC",
+            )
+        with kpi2:
+            st.metric(
+                label="CAGR (Annualized)",
+                value=f"{cagr:+.2f}%",
+                delta=f"Vol: {metrics.get('annualized_volatility', 0.0):.1f}%",
+            )
+        with kpi3:
+            st.metric(
+                label="Sharpe Ratio",
+                value=f"{sharpe:.2f}",
+                delta=f"Sortino: {sortino:.2f}",
+            )
+        with kpi4:
+            st.metric(
+                label="Max Drawdown",
+                value=f"-{abs(max_dd):.2f}%",
+                delta=f"Calmar: {calmar:.2f}",
+                delta_color="inverse",
+            )
+        with kpi5:
+            st.metric(
+                label="Win Rate",
+                value=f"{win_rate:.1f}%",
+                delta=f"Profit Factor: {pf:.2f} ({int(metrics.get('total_trades', 0))} trades)",
+            )
+
+        # Interactive Charts
+        st.markdown("---")
+        eq_fig = create_equity_curve_chart(equity_df, strategy_name=sel_strat, benchmark_name="BTC Benchmark")
+        st.plotly_chart(eq_fig, use_container_width=True)
+
+        dd_fig = create_underwater_drawdown_chart(equity_df)
+        st.plotly_chart(dd_fig, use_container_width=True)
+
+        # Trade History Log
+        st.markdown("---")
+        st.markdown("#### Closed Simulated Trade Journal")
+        if not trades_df.empty:
+            display_cols = ["asset_id", "entry_time", "exit_time", "entry_price", "exit_price", "pnl_pct", "pnl_usd", "fees_usd", "slippage_usd", "exit_reason"]
+            avail_cols = [c for c in display_cols if c in trades_df.columns]
+            st.dataframe(trades_df[avail_cols], use_container_width=True)
+        else:
+            st.info("No closed trades logged during this simulation window.")
 
 
 # ---------------------------------------------------------
