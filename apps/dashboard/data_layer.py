@@ -438,3 +438,155 @@ class DashboardDataLayer:
                 return {"status": "SUCCESS", "cash_balance": acc.cash_balance}
 
         return run_async(_reset())
+
+    @classmethod
+    def get_meme_radar_data(cls) -> list[dict]:
+        """Fetch real-time meme token radar audits."""
+        from src.scoring.meme_radar import MemeRadarEngine
+
+        async def _query():
+            engine = MemeRadarEngine()
+            audits = await engine.scan_meme_tokens()
+            return [a.model_dump() for a in audits]
+
+        return run_async(_query())
+
+    @classmethod
+    def get_sector_data(cls) -> pd.DataFrame:
+        """Fetch sector rotation and breadth metrics."""
+        from src.features.sector import get_all_sector_performances
+
+        async def _query():
+            cls.ensure_seeded_data()
+            factory = get_session_factory()
+            async with factory() as session:
+                sectors = await get_all_sector_performances(session)
+                rows = []
+                for s in sectors:
+                    rows.append({
+                        "sector_name": s.sector_name,
+                        "Sector": s.sector_name,
+                        "asset_count": s.asset_count,
+                        "return_1d": s.return_1d,
+                        "return_7d": s.return_7d,
+                        "return_30d": s.return_30d,
+                        "return_1d_pct": round(s.return_1d * 100.0, 2),
+                        "return_7d_pct": round(s.return_7d * 100.0, 2),
+                        "return_30d_pct": round(s.return_30d * 100.0, 2),
+                        "breadth_pct": s.breadth_pct,
+                        "volume_change_7d_pct": s.volume_change_7d_pct,
+                        "rotation_status": s.rotation_status,
+                    })
+                return pd.DataFrame(rows)
+
+        return run_async(_query())
+
+    @classmethod
+    def get_recent_alerts(cls, limit: int = 50) -> list[dict]:
+        """Retrieve historical alerts from DB or baseline."""
+        from src.alerts.models import AlertSeverity, AlertType
+        from src.database.models import Alert as AlertModel
+        from src.utils.time import utc_now
+
+        async def _query():
+            cls.ensure_seeded_data()
+            factory = get_session_factory()
+            async with factory() as session:
+                stmt = select(AlertModel).order_by(desc(AlertModel.time)).limit(limit)
+                res = await session.execute(stmt)
+                records = res.scalars().all()
+                if not records:
+                    now = utc_now()
+                    return [
+                        {
+                            "id": "alert_1",
+                            "time": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                            "alert_type": AlertType.MOMENTUM_BREAKOUT.value,
+                            "severity": AlertSeverity.INFO.value,
+                            "asset_id": "SOL",
+                            "message": "SOL 24h momentum acceleration exceeded +15% with 2.8x RVOL.",
+                        },
+                        {
+                            "id": "alert_2",
+                            "time": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                            "alert_type": AlertType.RELATIVE_STRENGTH.value,
+                            "severity": AlertSeverity.INFO.value,
+                            "asset_id": "NEAR",
+                            "message": "NEAR expanding relative strength ratio vs BTC > EMA50.",
+                        },
+                        {
+                            "id": "alert_3",
+                            "time": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                            "alert_type": AlertType.RISK_PENALTY.value,
+                            "severity": AlertSeverity.WARNING.value,
+                            "asset_id": "RENDER",
+                            "message": "Tokenomics upcoming unlock alert: 3.2% circulating supply unlocks in 48h.",
+                        },
+                    ]
+                return [
+                    {
+                        "id": r.id,
+                        "time": r.time.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                        "alert_type": r.alert_type,
+                        "severity": r.severity,
+                        "asset_id": r.asset_id,
+                        "message": r.message,
+                        "details": r.details or {},
+                    }
+                    for r in records
+                ]
+
+        return run_async(_query())
+
+    @classmethod
+    def simulate_alert(
+        cls,
+        alert_type: str,
+        severity: str,
+        symbol: str,
+        message: str,
+    ) -> dict:
+        """Dispatch simulated alert through AlertEngine and save to DB."""
+        from src.alerts.engine import AlertEngine
+        from src.alerts.models import AlertPayload, AlertSeverity, AlertType
+        from src.database.models import Alert as AlertModel
+        from src.utils.time import utc_now
+
+        async def _emit():
+            cls.ensure_seeded_data()
+            factory = get_session_factory()
+            async with factory() as session:
+                engine = AlertEngine()
+                a_type = AlertType(alert_type)
+                s_sev = AlertSeverity(severity)
+                alert = await engine.emit(
+                    alert_type=a_type,
+                    severity=s_sev,
+                    symbol=symbol.upper(),
+                    message=message,
+                )
+                if not alert:
+                    alert = AlertPayload(
+                        id=f"sim_{int(utc_now().timestamp())}",
+                        time=utc_now(),
+                        alert_type=a_type,
+                        severity=s_sev,
+                        asset_id=symbol.upper(),
+                        message=message,
+                    )
+                record = AlertModel(
+                    id=alert.id,
+                    time=alert.time,
+                    alert_type=alert.alert_type.value,
+                    severity=alert.severity.value,
+                    asset_id=alert.asset_id,
+                    message=alert.message,
+                    details=alert.details,
+                    is_read=False,
+                )
+                session.add(record)
+                await session.commit()
+                return alert.model_dump()
+
+        return run_async(_emit())
+

@@ -258,50 +258,97 @@ elif nav_page == "🔍 Market Scanner":
 # VIEW 3: MEME RADAR
 # ---------------------------------------------------------
 elif nav_page == "🚀 Meme Radar":
-    st.subheader("Meme Coin Quantitative Radar & Safety Matrix")
+    st.subheader("Meme Coin Quantitative Radar & DEX Liquidity Auditor")
     st.info(
-        "⚠️ **Meme tokens exhibit asymmetric downside risk, high concentration, and transient liquidity.** "
-        "Every meme asset is evaluated through our specialized Meme Model with strict risk penalty filters."
+        "⚠️ **Meme tokens exhibit asymmetric downside risk, high holder concentration, and transient DEX pool liquidity.** "
+        "Every meme asset is audited in real-time through our DEX Liquidity and On-Chain Risk Penalty Matrix."
     )
 
-    meme_df = df_scanner[df_scanner["Class"] == "MEME"]
+    meme_records = DashboardDataLayer.get_meme_radar_data()
 
-    if meme_df.empty:
-        st.write("No meme assets currently registered.")
+    if not meme_records:
+        st.warning("No DEX liquidity pools found for meme universe.")
     else:
-        for _, row in meme_df.iterrows():
-            flags = row["Risk Flags"]
-            flag_html = ""
-            if flags:
-                flag_html = "".join([f'<span class="risk-tag">{f}</span>' for f in flags])
-            else:
-                flag_html = '<span style="color: #10B981; font-weight: 600; font-size: 0.8rem;">&check; Zero Active Risk Flags</span>'
+        # High level KPI cards
+        k1, k2, k3, k4 = st.columns(4)
+        top_meme = meme_records[0]
+        avg_liq = sum(r["liquidity_usd"] for r in meme_records) / len(meme_records)
+        avg_buy_p = sum(r["buy_pressure_ratio"] for r in meme_records) / len(meme_records) * 100.0
+        tot_crit = sum(1 for r in meme_records if r["risk_level"] in ("HIGH", "CRITICAL"))
 
-            st.markdown(
-                f"""
-                <div class="quant-card">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <h3 style="margin: 0; color: #F8FAFC;">{row['Symbol']} &bull; {row['Name']}</h3>
-                            <span style="color: #94A3B8; font-size: 0.85rem;">Price: <b>${row['Price']:,.8f}</b> &bull; 7D Return: <b>{row['7D %']:+.2f}%</b></span>
-                        </div>
-                        <div style="text-align: right;">
-                            <span class="score-pill score-mid">Opportunity: {row['Opportunity']:.1f}</span>
-                        </div>
-                    </div>
-                    <div style="margin-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 0.5rem;">
-                        <span style="font-size: 0.8rem; color: #94A3B8; margin-right: 0.5rem; text-transform: uppercase; font-weight: 600;">Risk Status:</span>
-                        {flag_html}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+        with k1:
+            st.metric("Top Opportunity Meme", top_meme["symbol"], delta=f"Score: {top_meme['opportunity_score']:.1f}")
+        with k2:
+            st.metric("Median DEX Liquidity", f"${avg_liq:,.0f}", delta="On-Chain Pool Depth")
+        with k3:
+            st.metric("Avg 24h Buy Pressure", f"{avg_buy_p:.1f}%", delta="Order Flow Ratio")
+        with k4:
+            st.metric("High/Critical Risk Tokens", str(tot_crit), delta="Filtered by Safety Matrix", delta_color="inverse")
+
+        st.markdown("---")
+        st.markdown("#### DEX Liquidity & Quantitative Risk Rankings")
+
+        # Table data
+        import pandas as pd
+        table_rows = []
+        for r in meme_records:
+            flags_str = ", ".join(r["risk_flags"]) if r["risk_flags"] else "CLEAN"
+            table_rows.append({
+                "Symbol": r["symbol"],
+                "Chain / DEX": f"{r['chain_id'].upper()} &bull; {r['dex_id'].capitalize()}",
+                "Price": f"${r['price_usd']:,.8f}",
+                "Liquidity": f"${r['liquidity_usd']:,.0f}",
+                "24h Volume": f"${r['volume_24h_usd']:,.0f}",
+                "1h Vol Accel": f"{r['volume_acceleration_1h']:.2f}x",
+                "Buy Pressure": f"{r['buy_pressure_ratio']*100:.1f}%",
+                "Top 10 Holders": f"{r['top_10_holders_pct']:.1f}%",
+                "Age": f"{r['pair_age_hours']:.0f}h",
+                "Opportunity": f"{r['opportunity_score']:.1f}",
+                "Risk Level": r["risk_level"],
+                "Flags": flags_str,
+            })
+        st.dataframe(pd.DataFrame(table_rows), use_container_width=True)
+
+        st.markdown("---")
+        st.subheader("🔬 Token Micro-Structure & Risk Audit Inspector")
+        inspect_sym = st.selectbox("Select Token for Complete On-Chain Audit", [r["symbol"] for r in meme_records])
+        curr_audit = next(r for r in meme_records if r["symbol"] == inspect_sym)
+
+        a_col1, a_col2 = st.columns([1, 1])
+        with a_col1:
+            st.markdown(f"### **{curr_audit['symbol']}** ({curr_audit['name']})")
+            st.markdown(f"**DEX Pool:** `{curr_audit['pair_address']}` ({curr_audit['dex_id']} on {curr_audit['chain_id']})")
+            st.markdown(f"**Pair Age:** `{curr_audit['pair_age_hours']:.1f} hours` &bull; **Holders:** `{curr_audit['holder_count']:,}`")
+            st.markdown(f"**Top 10 Concentration:** `{curr_audit['top_10_holders_pct']:.1f}% of total supply`")
+
+            st.write("Factor Scores:")
+            st.progress(curr_audit["liquidity_score"] / 100.0, text=f"Liquidity Health: {curr_audit['liquidity_score']}/100")
+            st.progress(curr_audit["volume_momentum_score"] / 100.0, text=f"Volume Momentum: {curr_audit['volume_momentum_score']}/100")
+            st.progress(curr_audit["buy_pressure_score"] / 100.0, text=f"Buy Pressure: {curr_audit['buy_pressure_score']}/100")
+            st.progress(curr_audit["holder_distribution_score"] / 100.0, text=f"Holder Decentralization: {curr_audit['holder_distribution_score']}/100")
+
+        with a_col2:
+            st.markdown("#### Risk Deduction Audit")
+            st.markdown(f"**Gross Opportunity Score:** `{curr_audit['gross_score']:.1f} pts`")
+            st.markdown(f"**Total Penalties Deducted:** `<span style='color: #EF4444;'>-{curr_audit['total_penalties']:.1f} pts</span>`", unsafe_allow_html=True)
+            st.markdown(f"**Net Final Score:** `{curr_audit['opportunity_score']:.1f} / 100` &bull; **Risk Rating:** `{curr_audit['risk_level']}`")
+
+            if curr_audit["penalties_breakdown"]:
+                st.write("Active Penalty Deductions:")
+                for p in curr_audit["penalties_breakdown"]:
+                    st.error(f"❌ **{p['flag']}** ({p['deduction']} pts): {p['reason']}")
+            else:
+                st.success("✅ Zero active risk penalty flags detected. Pool liquidity and holder distribution are healthy.")
 
         st.markdown("### Meme Factor Radar")
-        top_meme = meme_df.iloc[0]["Symbol"]
-        scores_dict = meme_df.iloc[0].to_dict()
-        radar_fig = create_factor_radar_chart(scores_dict, top_meme)
+        radar_scores = {
+            "Liquidity": curr_audit["liquidity_score"],
+            "Volume Momentum": curr_audit["volume_momentum_score"],
+            "Buy Pressure": curr_audit["buy_pressure_score"],
+            "Holder Distribution": curr_audit["holder_distribution_score"],
+            "Opportunity": curr_audit["opportunity_score"],
+        }
+        radar_fig = create_factor_radar_chart(radar_scores, curr_audit["symbol"])
         st.plotly_chart(radar_fig, use_container_width=True)
 
 
@@ -311,31 +358,7 @@ elif nav_page == "🚀 Meme Radar":
 elif nav_page == "🔄 Sectors & Rotation":
     st.subheader("Crypto Sector Rotation & Relative Leadership")
 
-    # Aggregate sector stats
-    sector_summary = (
-        df_scanner.groupby("Sector")
-        .agg({
-            "Symbol": "count",
-            "1D %": "mean",
-            "7D %": "mean",
-            "30D %": "mean",
-            "Opportunity": "mean",
-        })
-        .reset_index()
-        .rename(columns={
-            "Symbol": "asset_count",
-            "1D %": "return_1d_pct",
-            "7D %": "return_7d_pct",
-            "30D %": "return_30d_pct",
-            "Opportunity": "avg_opportunity",
-        })
-    )
-    sector_summary["return_1d"] = sector_summary["return_1d_pct"] / 100.0
-    sector_summary["return_7d"] = sector_summary["return_7d_pct"] / 100.0
-    sector_summary["sector_name"] = sector_summary["Sector"]
-    sector_summary["rotation_status"] = sector_summary["return_7d"].apply(
-        lambda r: "LEADING" if r > 0.05 else ("ACCELERATING" if r > 0.0 else "WEAKENING")
-    )
+    sector_summary = DashboardDataLayer.get_sector_data()
 
     sec_col1, sec_col2 = st.columns([1, 1])
 
@@ -343,11 +366,21 @@ elif nav_page == "🔄 Sectors & Rotation":
         st.markdown("#### Sector Leadership Ranking")
         st.dataframe(
             sector_summary[[
-                "Sector", "asset_count", "return_1d_pct", "return_7d_pct", "return_30d_pct", "rotation_status"
-            ]].style.format({
-                "return_1d_pct": "{:+.2f}%",
-                "return_7d_pct": "{:+.2f}%",
-                "return_30d_pct": "{:+.2f}%",
+                "Sector", "asset_count", "return_1d_pct", "return_7d_pct", "return_30d_pct", "breadth_pct", "volume_change_7d_pct", "rotation_status"
+            ]].rename(columns={
+                "asset_count": "Assets",
+                "return_1d_pct": "1D %",
+                "return_7d_pct": "7D %",
+                "return_30d_pct": "30D %",
+                "breadth_pct": "Breadth %",
+                "volume_change_7d_pct": "Vol Δ 7D %",
+                "rotation_status": "Status",
+            }).style.format({
+                "1D %": "{:+.2f}%",
+                "7D %": "{:+.2f}%",
+                "30D %": "{:+.2f}%",
+                "Breadth %": "{:.1f}%",
+                "Vol Δ 7D %": "{:+.1f}%",
             }),
             use_container_width=True,
             height=380,
@@ -611,23 +644,43 @@ elif nav_page == "🧪 Backtest Lab":
 elif nav_page == "🔔 Alerts Center":
     st.subheader("Real-Time Signals & Operational Alerts")
 
-    alerts = [
-        {"Time": "10 mins ago", "Type": "MOMENTUM_BREAKOUT", "Asset": "SOL", "Severity": "INFO", "Message": "SOL 24h momentum acceleration exceeded +15% with 2.8x RVOL."},
-        {"Time": "45 mins ago", "Type": "RELATIVE_STRENGTH_ALPHA", "Asset": "NEAR", "Severity": "INFO", "Message": "NEAR expanding relative strength ratio vs BTC > EMA50."},
-        {"Time": "3 hours ago", "Type": "SUPPLY_RISK", "Asset": "RENDER", "Severity": "WARNING", "Message": "Tokenomics upcoming unlock alert: 3.2% circulating supply unlocks in 48h."},
-    ]
+    col_feed, col_sim = st.columns([2, 1])
 
-    for a in alerts:
-        color = "#10B981" if a["Severity"] == "INFO" else "#F59E0B"
-        st.markdown(
-            f"""
-            <div class="quant-card" style="border-left: 4px solid {color};">
-                <div style="display: flex; justify-content: space-between;">
-                    <b>{a['Asset']} &bull; {a['Type']}</b>
-                    <span style="color: #64748B; font-size: 0.8rem;">{a['Time']}</span>
+    with col_sim:
+        st.markdown("#### ⚡ Emit Test Signal")
+        with st.form("alert_simulator_form"):
+            sim_sym = st.selectbox("Symbol", ["BTC", "ETH", "SOL", "NEAR", "RENDER", "DOGE", "PEPE"])
+            sim_type = st.selectbox(
+                "Signal Type",
+                ["MOMENTUM_BREAKOUT", "RELATIVE_STRENGTH", "VOLUME_SPIKE", "REGIME_CHANGE", "RISK_PENALTY"],
+            )
+            sim_sev = st.selectbox("Severity", ["INFO", "WARNING", "CRITICAL"])
+            sim_msg = st.text_area("Message", value=f"Simulated quantitative alert for {sim_sym}: threshold exceeded.")
+            sim_submit = st.form_submit_button("Broadcast Signal")
+            if sim_submit:
+                res = DashboardDataLayer.simulate_alert(
+                    alert_type=sim_type,
+                    severity=sim_sev,
+                    symbol=sim_sym,
+                    message=sim_msg,
+                )
+                st.success(f"Dispatched alert {res.get('id', 'OK')}!")
+
+    with col_feed:
+        st.markdown("#### Signal Activity Stream")
+        recent_alerts = DashboardDataLayer.get_recent_alerts(limit=30)
+        for a in recent_alerts:
+            sev = a.get("severity", "INFO")
+            color = "#10B981" if sev == "INFO" else ("#F59E0B" if sev == "WARNING" else "#EF4444")
+            st.markdown(
+                f"""
+                <div class="quant-card" style="border-left: 4px solid {color}; margin-bottom: 0.75rem;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <b>{a.get('asset_id', 'SYSTEM')} &bull; {a.get('alert_type', 'GENERAL')}</b>
+                        <span style="color: #64748B; font-size: 0.8rem;">{a.get('time', '')}</span>
+                    </div>
+                    <div style="color: #CBD5E1; font-size: 0.85rem; margin-top: 0.25rem;">{a.get('message', '')}</div>
                 </div>
-                <div style="color: #CBD5E1; font-size: 0.85rem; margin-top: 0.25rem;">{a['Message']}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+                """,
+                unsafe_allow_html=True,
+            )
