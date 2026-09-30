@@ -1,16 +1,16 @@
-"""Ingestion pipeline coordinator for asset seeding, OHLCV ingestion, and DB storage."""
+"""Ingestion pipeline coordinator for asset seeding, OHLCV ingestion, and DB storage — v2.0."""
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config.constants import AssetClass, Timeframe
 from src.database.models import OHLCV, Asset, Exchange, Market
-from src.ingestion.providers.base import BaseDataProvider
 from src.utils.logging import get_logger
 from src.utils.time import to_utc_datetime
 from src.validation.ohlcv_validator import OHLCVValidator
 
 logger = get_logger("ingestion.pipeline")
+
 
 # Canonical bootstrap asset registry
 DEFAULT_UNIVERSE = [
@@ -129,7 +129,7 @@ async def seed_default_universe(session: AsyncSession, exchange_id: str = "binan
 
 async def ingest_market_ohlcv(
     session: AsyncSession,
-    provider: BaseDataProvider,
+    provider: "Any",
     symbol: str,
     market_id: str,
     timeframe: Timeframe = Timeframe.H1,

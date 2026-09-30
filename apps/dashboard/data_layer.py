@@ -1,4 +1,10 @@
-"""Data extraction and state aggregation layer for Streamlit Quantitative Lab."""
+"""Data extraction and state aggregation layer for Streamlit Quantitative Lab — v2.0.
+
+v2.0 changes:
+- Removed synthetic candle generation (DEFECT-1)
+- Removed fabricated baseline alerts (DEFECT-4)
+- All data now comes from real ingestion; views show DATA_UNAVAILABLE when data is missing
+"""
 
 import asyncio
 import concurrent.futures
@@ -7,13 +13,11 @@ from datetime import UTC, datetime
 import pandas as pd
 from sqlalchemy import desc, select
 
-from src.config.constants import Timeframe
 from src.database.models import OHLCV, Asset, Feature, Score
 from src.database.session import get_session_factory, init_db
 from src.features.market_regime import classify_market_regime
-from src.features.pipeline import calculate_and_store_asset_features
 from src.ingestion.pipeline import seed_default_universe
-from src.scoring.engine import score_universe
+
 
 
 def run_async(coro):
@@ -30,52 +34,19 @@ class DashboardDataLayer:
 
     @classmethod
     def ensure_seeded_data(cls) -> None:
-        """Ensure initial universe and baseline candles exist in DB."""
+        """Ensure DB is initialized and the asset universe is registered.
+
+        v2.0: Synthetic candle generation is REMOVED (DEFECT-1 fix).
+        The dashboard no longer auto-generates fake OHLCV data on startup.
+        Market data must be ingested via the live ingestion pipeline.
+        If no data is available, scanner views will surface a clear
+        DATA_UNAVAILABLE state rather than showing fabricated numbers.
+        """
         async def _seed():
             await init_db()
             factory = get_session_factory()
             async with factory() as session:
                 await seed_default_universe(session)
-                # Check if OHLCV data exists
-                res = await session.execute(select(OHLCV).limit(1))
-                if not res.scalar_one_or_none():
-                    # Generate synthetic baseline candles for demonstration
-                    base_ms = int(datetime.now(UTC).timestamp() * 1000) - (200 * 3600 * 1000)
-                    assets_map = {
-                        "BTC": (64000.0, 1.02),
-                        "ETH": (3400.0, 1.015),
-                        "SOL": (155.0, 1.03),
-                        "BNB": (590.0, 1.008),
-                        "NEAR": (5.20, 1.04),
-                        "RENDER": (6.40, 1.035),
-                        "DOGE": (0.125, 1.06),
-                        "PEPE": (0.0000095, 1.08),
-                    }
-                    for sym, (base_p, trend_factor) in assets_map.items():
-                        market_id = f"binance:{sym}/USDT"
-                        curr_p = base_p
-                        for i in range(120):
-                            t = datetime.fromtimestamp((base_ms + (i * 3600 * 1000)) / 1000.0, tz=UTC)
-                            change = (0.002 * (i % 5 - 2)) + ((trend_factor - 1.0) * 0.1)
-                            curr_p = max(0.000001, curr_p * (1.0 + change))
-                            candle = OHLCV(
-                                time=t,
-                                market_id=market_id,
-                                timeframe="1h",
-                                open=curr_p * 0.998,
-                                high=curr_p * 1.012,
-                                low=curr_p * 0.992,
-                                close=curr_p,
-                                volume=1000.0 + (i * 15.0),
-                                validation_status="GOOD",
-                            )
-                            session.add(candle)
-                    await session.commit()
-
-                    # Compute features & scores
-                    for sym in assets_map:
-                        await calculate_and_store_asset_features(session, sym, Timeframe.H1)
-                    await score_universe(session, Timeframe.H1)
 
         run_async(_seed())
 
@@ -483,10 +454,14 @@ class DashboardDataLayer:
 
     @classmethod
     def get_recent_alerts(cls, limit: int = 50) -> list[dict]:
-        """Retrieve historical alerts from DB or baseline."""
-        from src.alerts.models import AlertSeverity, AlertType
+        """Retrieve historical alerts from DB.
+
+        v2.0: Fabricated baseline alerts are REMOVED (DEFECT-4 fix).
+        If no alerts exist in the DB, an empty list is returned.
+        The UI must render this as 'No alerts yet. Run the alert engine to generate signals.'
+        Fake demo alerts must never be shown as if they were real trading signals.
+        """
         from src.database.models import Alert as AlertModel
-        from src.utils.time import utc_now
 
         async def _query():
             cls.ensure_seeded_data()
@@ -495,34 +470,6 @@ class DashboardDataLayer:
                 stmt = select(AlertModel).order_by(desc(AlertModel.time)).limit(limit)
                 res = await session.execute(stmt)
                 records = res.scalars().all()
-                if not records:
-                    now = utc_now()
-                    return [
-                        {
-                            "id": "alert_1",
-                            "time": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
-                            "alert_type": AlertType.MOMENTUM_BREAKOUT.value,
-                            "severity": AlertSeverity.INFO.value,
-                            "asset_id": "SOL",
-                            "message": "SOL 24h momentum acceleration exceeded +15% with 2.8x RVOL.",
-                        },
-                        {
-                            "id": "alert_2",
-                            "time": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
-                            "alert_type": AlertType.RELATIVE_STRENGTH.value,
-                            "severity": AlertSeverity.INFO.value,
-                            "asset_id": "NEAR",
-                            "message": "NEAR expanding relative strength ratio vs BTC > EMA50.",
-                        },
-                        {
-                            "id": "alert_3",
-                            "time": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
-                            "alert_type": AlertType.RISK_PENALTY.value,
-                            "severity": AlertSeverity.WARNING.value,
-                            "asset_id": "RENDER",
-                            "message": "Tokenomics upcoming unlock alert: 3.2% circulating supply unlocks in 48h.",
-                        },
-                    ]
                 return [
                     {
                         "id": r.id,

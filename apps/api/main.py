@@ -1,4 +1,4 @@
-"""FastAPI Application entrypoint."""
+"""FastAPI Application entrypoint — v2.0.0."""
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -17,12 +17,25 @@ logger = get_logger("apps.api.main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan management for initialization and clean teardown."""
+    """Application lifespan management — v2.0."""
     setup_logging()
     settings = get_settings()
-    logger.info("application_startup_initiated", app=settings.APP_NAME, version=settings.APP_VERSION)
+    logger.info(
+        "application_startup_initiated",
+        app=settings.APP_NAME,
+        version=settings.APP_VERSION,
+        data_mode=settings.DATA_MODE,
+        live_trading_enabled=settings.LIVE_TRADING_ENABLED,  # always False in v2.0
+        paper_trading_enabled=settings.PAPER_TRADING_ENABLED,
+    )
 
-    # Initialize database tables and seed initial universe
+    # Architecturally enforce live trading disabled at startup
+    if settings.LIVE_TRADING_ENABLED:
+        raise RuntimeError(
+            "LIVE_TRADING_ENABLED=True is not permitted in v2.0. "
+            "See settings.enforce_live_trading_disabled."
+        )
+
     try:
         await init_db()
         logger.info("database_initialized_successfully")
@@ -36,7 +49,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     yield
 
-    # Clean shutdown
     logger.info("application_shutdown_initiated")
     await close_db()
     logger.info("application_shutdown_completed")
@@ -50,8 +62,9 @@ def create_app() -> FastAPI:
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
         description=(
-            "Cryptocurrency Market Intelligence, Quantitative Factor Scanner, "
-            "Backtesting Engine & Paper Trading Broker API."
+            "Cryptocurrency Market Intelligence v2.0 — "
+            "Quantitative Factor Scanner, Backtesting Engine & Demo Trading Broker. "
+            "Non-custodial. No real-money trading."
         ),
         docs_url="/docs",
         redoc_url="/redoc",
@@ -59,13 +72,15 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # CORS configuration
+    # CORS — v2.0 security fix (DEFECT-9)
+    # allow_origins=["*"] with allow_credentials=True was a security misconfiguration.
+    # Now uses configured allow-list from CORS_ALLOWED_ORIGINS setting.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=settings.cors_allowed_origins_list,
+        allow_credentials=False,  # v2.0: no session cookies needed
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
     )
 
     # Register routers

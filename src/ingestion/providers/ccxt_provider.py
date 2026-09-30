@@ -1,103 +1,227 @@
-"""CCXT exchange adapter using public APIs."""
+"""CCXT-based MarketDataProvider implementation — v2.0.
 
-import ccxt.async_support as ccxt_async
+Uses the ccxt library to fetch live market data from Binance (default)
+and other exchanges. All error paths raise DataUnavailableError or
+PriceUnavailableError — no synthetic fallback is ever returned.
+"""
 
-from src.config.constants import DataQualityStatus, Timeframe
-from src.ingestion.providers.base import BaseDataProvider, RawCandle, RawTicker
+from datetime import UTC, datetime
+from typing import Any
+
+from src.config.exceptions import (
+    DataUnavailableError,
+    ExternalProviderUnavailableError,
+    PriceUnavailableError,
+)
 from src.utils.logging import get_logger
 
-logger = get_logger("ingestion.ccxt")
+logger = get_logger("ccxt_provider")
 
 
-class CCXTProvider(BaseDataProvider):
-    """Asynchronous CCXT provider communicating with public exchange endpoints."""
+def _require_ccxt() -> Any:
+    """Import ccxt, raising a clear error if not installed."""
+    try:
+        import ccxt.async_support as ccxt  # type: ignore[import]
+        return ccxt
+    except ImportError as e:
+        raise ImportError(
+            "ccxt is required for live market data. "
+            "Install with: pip install ccxt"
+        ) from e
 
-    def __init__(self, exchange_id: str = "binance"):
-        self.exchange_id = exchange_id.lower()
-        if not hasattr(ccxt_async, self.exchange_id):
-            raise ValueError(f"Exchange '{exchange_id}' is not supported by CCXT.")
 
-        exchange_class = getattr(ccxt_async, self.exchange_id)
-        self.client: ccxt_async.Exchange = exchange_class({
-            "enableRateLimit": True,
-            "timeout": 15000,
-        })
-        self._is_available = True
+class CCXTProvider:
+    """Live market data provider backed by CCXT library.
 
-    @property
-    def name(self) -> str:
-        return f"ccxt:{self.exchange_id}"
+    This class is the only place in the codebase that interacts with
+    exchange REST APIs. All other modules consume its validated output.
 
-    @property
-    def is_available(self) -> bool:
-        return self._is_available
+    Never returns synthetic candles or hard-coded price fallbacks.
+    """
+
+    def __init__(self, exchange_id: str = "binance", timeout_ms: int = 10_000) -> None:
+        self.exchange_id = exchange_id
+        self.timeout_ms = timeout_ms
+        self._exchange: Any | None = None
+
+    async def _get_exchange(self) -> Any:
+        if self._exchange is None:
+            ccxt = _require_ccxt()
+            exchange_cls = getattr(ccxt, self.exchange_id, None)
+            if exchange_cls is None:
+                raise DataUnavailableError(
+                    source=self.exchange_id,
+                    reason="UNSUPPORTED_EXCHANGE",
+                    details=f"Exchange '{self.exchange_id}' is not supported by ccxt.",
+                )
+            self._exchange = exchange_cls({
+                "timeout": self.timeout_ms,
+                "enableRateLimit": True,
+            })
+        return self._exchange
+
+    async def fetch_markets(self, exchange: str | None = None) -> list[dict[str, Any]]:
+        """Fetch and return all active spot markets from the exchange."""
+        ex = await self._get_exchange()
+        try:
+            raw_markets = await ex.load_markets(reload=True)
+        except Exception as e:
+            raise ExternalProviderUnavailableError(
+                provider=self.exchange_id,
+                details=f"load_markets failed: {e}",
+            ) from e
+
+        result = []
+        for symbol, info in raw_markets.items():
+            if not info.get("active", False):
+                continue
+            if info.get("type") not in {"spot", None}:
+                continue
+            result.append({
+                "id": info.get("id", ""),
+                "symbol": symbol,
+                "base": info.get("base", ""),
+                "quote": info.get("quote", ""),
+                "active": bool(info.get("active")),
+                "type": info.get("type", "spot"),
+                "spot": info.get("spot", True),
+                # volume_24h_usd populated separately via ticker batch fetch
+                "volume_24h_usd": 0.0,
+            })
+        logger.info("ccxt_markets_loaded", exchange=self.exchange_id, count=len(result))
+        return result
 
     async def fetch_ohlcv(
         self,
         symbol: str,
-        timeframe: Timeframe = Timeframe.H1,
+        timeframe: str,
         since_ms: int | None = None,
-        limit: int = 100,
-    ) -> list[RawCandle]:
-        """Fetch historical OHLCV candles from exchange."""
-        try:
-            raw_candles = await self.client.fetch_ohlcv(
-                symbol=symbol,
-                timeframe=str(timeframe.value),
-                since=since_ms,
-                limit=limit,
-            )
-            candles: list[RawCandle] = []
-            for c in raw_candles:
-                # c format: [timestamp, open, high, low, close, volume]
-                candles.append(
-                    RawCandle(
-                        timestamp_ms=int(c[0]),
-                        open=float(c[1]),
-                        high=float(c[2]),
-                        low=float(c[3]),
-                        close=float(c[4]),
-                        volume=float(c[5]) if c[5] is not None else 0.0,
-                        validation_status=DataQualityStatus.GOOD,
-                    )
-                )
-            self._is_available = True
-            return candles
-        except Exception as e:
-            logger.warning(
-                "ccxt_fetch_ohlcv_failed",
-                exchange=self.exchange_id,
-                symbol=symbol,
-                error=str(e),
-            )
-            self._is_available = False
-            return []
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        """Fetch OHLCV candles.
 
-    async def fetch_ticker(self, symbol: str) -> RawTicker | None:
-        """Fetch latest 24h ticker data."""
+        Raises DataUnavailableError if no candles returned.
+        """
+        ex = await self._get_exchange()
         try:
-            ticker = await self.client.fetch_ticker(symbol)
-            self._is_available = True
-            return RawTicker(
-                symbol=symbol,
-                last_price=float(ticker.get("last") or ticker.get("close") or 0.0),
-                bid=float(ticker.get("bid")) if ticker.get("bid") is not None else None,
-                ask=float(ticker.get("ask")) if ticker.get("ask") is not None else None,
-                volume_24h_usd=float(ticker.get("quoteVolume")) if ticker.get("quoteVolume") is not None else None,
-                timestamp_ms=int(ticker.get("timestamp") or 0),
-            )
+            raw = await ex.fetch_ohlcv(symbol, timeframe, since=since_ms, limit=limit)
         except Exception as e:
-            logger.warning(
-                "ccxt_fetch_ticker_failed",
-                exchange=self.exchange_id,
+            raise DataUnavailableError(
+                source=self.exchange_id,
                 symbol=symbol,
-                error=str(e),
+                reason="OHLCV_FETCH_FAILED",
+                details=str(e),
+            ) from e
+
+        if not raw:
+            raise DataUnavailableError(
+                source=self.exchange_id,
+                symbol=symbol,
+                reason="EMPTY_OHLCV_RESPONSE",
+                details=f"Exchange returned 0 candles for {symbol}/{timeframe}.",
             )
-            self._is_available = False
-            return None
+
+        result = []
+        for c in raw:
+            ts_ms, open_, high, low, close, vol = c
+            if close is None or close <= 0:
+                continue
+            result.append({
+                "time_ms": int(ts_ms),
+                "open": float(open_),
+                "high": float(high),
+                "low": float(low),
+                "close": float(close),
+                "volume": float(vol) if vol else 0.0,
+            })
+
+        if not result:
+            raise DataUnavailableError(
+                source=self.exchange_id,
+                symbol=symbol,
+                reason="INVALID_CANDLE_DATA",
+                details="All returned candles had zero or null close price.",
+            )
+
+        logger.info(
+            "ccxt_ohlcv_fetched",
+            exchange=self.exchange_id,
+            symbol=symbol,
+            timeframe=timeframe,
+            candles=len(result),
+        )
+        return result
+
+    async def fetch_ticker(self, symbol: str) -> dict[str, Any]:
+        """Fetch current ticker — raises PriceUnavailableError on failure."""
+        ex = await self._get_exchange()
+        try:
+            t = await ex.fetch_ticker(symbol)
+        except Exception as e:
+            raise PriceUnavailableError(
+                symbol=symbol,
+                source=self.exchange_id,
+                details=str(e),
+            ) from e
+
+        last = t.get("last")
+        if last is None or float(last) <= 0:
+            raise PriceUnavailableError(
+                symbol=symbol,
+                source=self.exchange_id,
+                details="Ticker returned null or zero last price.",
+            )
+
+        ts = t.get("timestamp") or int(datetime.now(UTC).timestamp() * 1000)
+        return {
+            "symbol": symbol,
+            "last": float(last),
+            "bid": float(t.get("bid") or last),
+            "ask": float(t.get("ask") or last),
+            "bid_size": float(t.get("bidVolume") or 0.0),
+            "ask_size": float(t.get("askVolume") or 0.0),
+            "volume_24h": float(t.get("baseVolume") or 0.0),
+            "quote_volume_24h": float(t.get("quoteVolume") or 0.0),
+            "timestamp_ms": int(ts),
+            "exchange": self.exchange_id,
+        }
+
+    async def fetch_orderbook(
+        self, symbol: str, depth: int = 20
+    ) -> dict[str, Any]:
+        """Fetch L2 orderbook snapshot."""
+        ex = await self._get_exchange()
+        try:
+            ob = await ex.fetch_order_book(symbol, limit=depth)
+        except Exception as e:
+            raise DataUnavailableError(
+                source=self.exchange_id,
+                symbol=symbol,
+                reason="ORDERBOOK_FETCH_FAILED",
+                details=str(e),
+            ) from e
+
+        bids = ob.get("bids", [])
+        asks = ob.get("asks", [])
+        best_bid = float(bids[0][0]) if bids else 0.0
+        best_ask = float(asks[0][0]) if asks else 0.0
+        spread_bps = ((best_ask - best_bid) / best_bid * 10000) if best_bid > 0 else 0.0
+
+        ts = ob.get("timestamp") or int(datetime.now(UTC).timestamp() * 1000)
+        return {
+            "symbol": symbol,
+            "timestamp_ms": int(ts),
+            "bids": [[float(p), float(s)] for p, s in bids[:depth]],
+            "asks": [[float(p), float(s)] for p, s in asks[:depth]],
+            "best_bid": best_bid,
+            "best_ask": best_ask,
+            "spread_bps": round(spread_bps, 3),
+            "mid_price": (best_bid + best_ask) / 2 if best_bid and best_ask else 0.0,
+            "exchange": self.exchange_id,
+        }
 
     async def close(self) -> None:
-        """Close exchange aiohttp session."""
-        if self.client:
-            await self.client.close()
-            logger.info("ccxt_session_closed", exchange=self.exchange_id)
+        """Release CCXT exchange connections."""
+        if self._exchange is not None:
+            await self._exchange.close()
+            self._exchange = None

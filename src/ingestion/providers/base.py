@@ -1,66 +1,102 @@
-"""Abstract Base Data Provider Interface."""
+"""MarketDataProvider Protocol + data transfer models — v2.0 adapter interface.
 
-from abc import ABC, abstractmethod
+All exchange-specific implementations must implement the MarketDataProvider Protocol.
+Exchange-specific code must NOT be spread throughout the project.
+Only adapter modules under src/ingestion/providers/ may contain exchange specifics.
+
+Also contains RawCandle and RawTicker for backward compatibility with the
+validation layer and legacy ingestion pipeline.
+"""
+
+from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
-from src.config.constants import DataQualityStatus, Timeframe
+from src.config.constants import DataQualityStatus
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Data Transfer Models (shared by all providers)
+# ─────────────────────────────────────────────────────────────────────────────
 
 class RawCandle(BaseModel):
-    """Normalized raw candlestick payload."""
+    """Normalized OHLCV candle from any provider."""
     timestamp_ms: int
     open: float
     high: float
     low: float
     close: float
     volume: float
-    quote_volume: float | None = None
     validation_status: DataQualityStatus = DataQualityStatus.GOOD
 
 
+# Alias used by live_ingestor.py
+RawOHLCV = RawCandle
+
+
 class RawTicker(BaseModel):
-    """Normalized raw ticker quote."""
+    """Normalized ticker from any provider."""
     symbol: str
-    last_price: float
-    bid: float | None = None
-    ask: float | None = None
-    volume_24h_usd: float | None = None
-    timestamp_ms: int
+    last: float
+    bid: float = 0.0
+    ask: float = 0.0
+    volume_24h: float = 0.0
+    quote_volume_24h: float = 0.0
+    timestamp_ms: int = 0
+    exchange: str = ""
 
 
-class BaseDataProvider(ABC):
-    """Abstract interface for all market and on-chain data providers."""
+# ─────────────────────────────────────────────────────────────────────────────
+#  Provider Protocol
+# ─────────────────────────────────────────────────────────────────────────────
 
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Provider identifier."""
-        pass
+@runtime_checkable
+class MarketDataProvider(Protocol):
+    """Abstract interface for all market data sources.
 
-    @property
-    @abstractmethod
-    def is_available(self) -> bool:
-        """Current operational status of provider."""
-        pass
+    Implementations:
+    - CCXTProvider      — CCXT-backed (Binance, Coinbase, Kraken, etc.)
+    - HistoricalProvider — reads stored DB candles, no live feed
+    - SyntheticTestProvider — deterministic test data (only for TEST data mode)
 
-    @abstractmethod
+    Selection is configuration-driven via settings.DEFAULT_EXCHANGE.
+    """
+
+    async def fetch_markets(self, exchange: str) -> list[dict[str, Any]]:
+        """Return list of tradable markets from the exchange."""
+        ...
+
     async def fetch_ohlcv(
         self,
         symbol: str,
-        timeframe: Timeframe = Timeframe.H1,
+        timeframe: str,
         since_ms: int | None = None,
-        limit: int = 100,
-    ) -> list[RawCandle]:
-        """Fetch historical candlestick data."""
-        pass
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        """Fetch OHLCV candles from exchange.
 
-    @abstractmethod
-    async def fetch_ticker(self, symbol: str) -> RawTicker | None:
-        """Fetch latest 24h ticker quote."""
-        pass
+        Raises DataUnavailableError if exchange is unreachable or returns no data.
+        Never returns synthetic/fabricated candles.
+        """
+        ...
 
-    @abstractmethod
+    async def fetch_ticker(self, symbol: str) -> dict[str, Any]:
+        """Fetch current ticker for a symbol.
+
+        Raises PriceUnavailableError if exchange is unreachable.
+        """
+        ...
+
+    async def fetch_orderbook(
+        self, symbol: str, depth: int = 20
+    ) -> dict[str, Any]:
+        """Fetch current L2 orderbook snapshot."""
+        ...
+
     async def close(self) -> None:
-        """Release underlying network sessions."""
-        pass
+        """Release any connections or resources."""
+        ...
+
+
+# Backward-compat alias for code that still imports BaseDataProvider
+BaseDataProvider = MarketDataProvider

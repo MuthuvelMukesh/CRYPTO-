@@ -26,20 +26,26 @@ class PaperAccount(Base):
 
 
 class PaperOrder(Base):
-    """Simulated order lifecycle records."""
+    """Simulated order lifecycle records — v2.0.
+
+    idempotency_key: client-supplied key to prevent duplicate submissions.
+    exchange_id: always 'paper_simulated' in v2.0 (never a real exchange ID).
+    """
 
     __tablename__ = "paper_orders"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     account_id: Mapped[str] = mapped_column(String(32), ForeignKey("paper_accounts.id"), nullable=False)
     asset_id: Mapped[str] = mapped_column(String(32), ForeignKey("assets.id"), nullable=False)
-    exchange_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    exchange_id: Mapped[str] = mapped_column(String(32), nullable=False, default="paper_simulated")
     order_type: Mapped[str] = mapped_column(String(16), nullable=False)  # MARKET, LIMIT, STOP_LOSS
     side: Mapped[str] = mapped_column(String(8), nullable=False)  # BUY, SELL
     quantity: Mapped[float] = mapped_column(Float, nullable=False)
     limit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     stop_price: Mapped[float | None] = mapped_column(Float, nullable=True)
-    status: Mapped[str] = mapped_column(String(16), default="PENDING")  # PENDING, FILLED, CANCELLED
+    status: Mapped[str] = mapped_column(String(24), default="PENDING")
+    # v2.0: idempotency_key prevents duplicate order submission
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 

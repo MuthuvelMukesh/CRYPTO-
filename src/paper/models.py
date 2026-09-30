@@ -33,7 +33,11 @@ class PaperOrderStatus(StrEnum):
 
 
 class OrderSubmitRequest(BaseModel):
-    """Payload to place a virtual paper order."""
+    """Payload to place a virtual paper order — v2.0.
+
+    idempotency_key: optional client-generated UUID to prevent duplicate submission.
+    If an order with this key already exists, DuplicateOrderError is raised.
+    """
 
     model_config = ConfigDict(protected_namespaces=())
 
@@ -44,6 +48,11 @@ class OrderSubmitRequest(BaseModel):
     quantity: float = Field(..., gt=0.0, description="Order asset quantity")
     limit_price: float | None = Field(default=None, gt=0.0, description="Optional limit price")
     stop_price: float | None = Field(default=None, gt=0.0, description="Optional stop trigger price")
+    # v2.0: idempotency key — client must supply a unique UUID per distinct order intention
+    idempotency_key: str | None = Field(
+        default=None,
+        description="Client-generated UUID to prevent duplicate order submission",
+    )
 
 
 class FillResponse(BaseModel):
@@ -75,7 +84,11 @@ class OrderResponse(BaseModel):
 
 
 class PositionResponse(BaseModel):
-    """Open or closed virtual paper position."""
+    """Open or closed virtual paper position — v2.0.
+
+    price_stale: True if the current_price used for MTM is stale (no live data).
+    When True, unrealized_pnl and market_value should be treated as approximate.
+    """
 
     id: str
     account_id: str
@@ -92,6 +105,8 @@ class PositionResponse(BaseModel):
     exit_time: str | None = None
     is_open: bool
     exit_reason: str | None = None
+    # v2.0: explicit staleness flag — never silently use stale prices
+    price_stale: bool = False
 
 
 class PortfolioSummaryResponse(BaseModel):

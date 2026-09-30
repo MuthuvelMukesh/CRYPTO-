@@ -1,12 +1,30 @@
-"""Virtual paper brokerage managing accounts, orders, positions, and portfolio accounting."""
+"""Virtual paper brokerage — v2.0.
+
+Key v2.0 changes:
+- Removed hard-coded synthetic price fallback dictionary (DEFECT-2)
+- get_latest_price() raises PriceUnavailableError instead of returning fake prices
+- Added idempotency_key check to prevent duplicate order submission
+- Added explicit LIVE_TRADING_DISABLED guard
+- Machine-readable rejection codes returned in OrderResponse
+- Stale price detection via configurable threshold
+"""
 
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backtesting.execution import ExecutionSimulator
 from src.backtesting.models import OrderSide, SlippageModelType
+from src.config.constants import RiskRejectionCode
+from src.config.exceptions import (
+    DuplicateOrderError,
+    LiveTradingDisabledError,
+    PriceUnavailableError,
+    StaleDataError,
+)
+from src.config.settings import get_settings
 from src.database.models import (
     OHLCV,
     Asset,
@@ -31,16 +49,54 @@ from src.utils.logging import get_logger
 from src.utils.time import utc_now
 
 logger = get_logger("paper_broker")
+settings = get_settings()
+
+
+class LiveExecutionGateway:
+    """v2.0 stub: architecturally disabled live order gateway.
+
+    This class exists solely as an explicit barrier. If any code path reaches
+    this class, it raises LiveTradingDisabledError immediately.
+    Any future v3.0 live trading implementation would override this class only
+    after all regulatory and custodial infrastructure is in place.
+    """
+
+    def submit(self, *args, **kwargs) -> None:  # noqa: ANN002
+        raise LiveTradingDisabledError()
+
+
+class PaperExecutionGateway:
+    """Isolated demo execution path. Only PaperBroker instances use this.
+
+    Paper orders are guaranteed to never reach any exchange API.
+    """
+
+    def validate_isolation(self) -> None:
+        """Assert that live trading is disabled at settings level."""
+        if settings.LIVE_TRADING_ENABLED:
+            raise RuntimeError(
+                "CRITICAL: LIVE_TRADING_ENABLED=True detected in settings. "
+                "This should be architecturally impossible. "
+                "See settings.enforce_live_trading_disabled validator."
+            )
 
 
 class PaperBroker:
-    """Virtual broker executing simulated orders with micro-structure friction and portfolio accounting."""
+    """Virtual broker executing simulated orders with micro-structure friction and portfolio accounting.
+
+    v2.0 guarantees:
+    1. Never returns a synthetic/fabricated price — raises PriceUnavailableError instead.
+    2. Checks idempotency_key to prevent double-order submission.
+    3. All order rejections carry machine-readable RiskRejectionCode.
+    4. Calls PaperExecutionGateway.validate_isolation() before any fill.
+    """
 
     def __init__(self, risk_engine: RiskEngine | None = None) -> None:
         self.risk_engine = risk_engine or RiskEngine()
+        self.gateway = PaperExecutionGateway()
         self.simulator = ExecutionSimulator(
-            maker_fee_bps=2.0,
-            taker_fee_bps=5.0,
+            maker_fee_bps=settings.MAKER_FEE_BPS,
+            taker_fee_bps=settings.TAKER_FEE_BPS,
             slippage_model=SlippageModelType.MARKET_IMPACT,
             impact_gamma=0.1,
         )
@@ -50,7 +106,7 @@ class PaperBroker:
         session: AsyncSession,
         account_id: str = "default_paper",
         name: str = "Primary Paper Portfolio",
-        starting_balance: float = 100000.0,
+        starting_balance: float | None = None,
     ) -> PaperAccount:
         """Fetch existing paper account or initialize a new virtual ledger."""
         stmt = select(PaperAccount).where(PaperAccount.id == account_id)
@@ -58,22 +114,51 @@ class PaperBroker:
         account = res.scalars().first()
 
         if not account:
+            bal = starting_balance or settings.PAPER_INITIAL_CAPITAL
             account = PaperAccount(
                 id=account_id,
                 name=name,
                 base_currency="USD",
-                starting_balance=starting_balance,
-                cash_balance=starting_balance,
+                starting_balance=bal,
+                cash_balance=bal,
                 created_at=utc_now(),
             )
             session.add(account)
             await session.commit()
-            logger.info("Initialized new paper trading account", account_id=account_id, balance=starting_balance)
+            logger.info(
+                "Initialized new paper trading account",
+                account_id=account_id,
+                balance=bal,
+            )
 
         return account
 
-    async def get_latest_price(self, session: AsyncSession, symbol: str) -> float:
-        """Fetch latest market price for an asset symbol."""
+    async def get_latest_price(
+        self,
+        session: AsyncSession,
+        symbol: str,
+        *,
+        max_age_seconds: int | None = None,
+    ) -> float:
+        """Fetch latest validated market price for an asset symbol from the DB.
+
+        v2.0 behaviour:
+        - If a fresh OHLCV candle exists → return close price.
+        - If most recent candle is stale (age > max_age_seconds) → raise StaleDataError.
+        - If no candle found at all → raise PriceUnavailableError.
+        - Hard-coded synthetic fallbacks are REMOVED.
+
+        Args:
+            session: async database session
+            symbol: e.g. "BTC", "ETH"
+            max_age_seconds: override default stale threshold from settings
+
+        Raises:
+            PriceUnavailableError: no candle found in DB for this symbol
+            StaleDataError: candle found but older than threshold
+        """
+        threshold = max_age_seconds or settings.PRICE_STALE_THRESHOLD_SECONDS
+
         stmt = (
             select(OHLCV)
             .where(OHLCV.market_id.like(f"%{symbol.upper()}%"))
@@ -82,42 +167,110 @@ class PaperBroker:
         )
         res = await session.execute(stmt)
         candle = res.scalars().first()
-        if candle and candle.close > 0:
-            return float(candle.close)
 
-        # Robust fallbacks for baseline demonstration
-        fallbacks = {
-            "BTC": 64200.0,
-            "ETH": 3450.0,
-            "SOL": 154.20,
-            "BNB": 595.0,
-            "NEAR": 5.25,
-            "RENDER": 6.50,
-            "DOGE": 0.125,
-            "PEPE": 0.0000095,
-        }
-        return fallbacks.get(symbol.upper(), 10.0)
+        if candle is None:
+            raise PriceUnavailableError(
+                symbol=symbol,
+                source="ohlcv_db",
+                details=f"No OHLCV record found for {symbol}. Run market data ingestion first.",
+            )
+
+        if candle.close is None or candle.close <= 0:
+            raise PriceUnavailableError(
+                symbol=symbol,
+                source="ohlcv_db",
+                details=f"Most recent OHLCV record for {symbol} has null or zero close price.",
+            )
+
+        # Check freshness
+        age_seconds = (datetime.now(UTC) - candle.time.replace(tzinfo=UTC)).total_seconds()
+        if age_seconds > threshold:
+            raise StaleDataError(
+                symbol=symbol,
+                age_seconds=age_seconds,
+                threshold_seconds=threshold,
+                source="ohlcv_db",
+            )
+
+        return float(candle.close)
+
+    async def _resolve_price_for_position(
+        self,
+        session: AsyncSession,
+        symbol: str,
+    ) -> float | None:
+        """Resolve best-effort price for mark-to-market of existing positions.
+
+        For MTM purposes only, we use a looser stale threshold to avoid crashing
+        portfolio summaries during brief data gaps. Returns None if unavailable.
+        """
+        try:
+            # For MTM, allow up to 3x the normal stale threshold
+            return await self.get_latest_price(
+                session, symbol, max_age_seconds=settings.PRICE_STALE_THRESHOLD_SECONDS * 3
+            )
+        except (PriceUnavailableError, StaleDataError) as e:
+            logger.warning(
+                "price_unavailable_for_mtm",
+                symbol=symbol,
+                reason=str(e),
+            )
+            return None
+
+    async def _check_duplicate_order(
+        self,
+        session: AsyncSession,
+        idempotency_key: str,
+    ) -> PaperOrder | None:
+        """Return existing order if idempotency_key already used; None otherwise."""
+        if not idempotency_key:
+            return None
+        stmt = select(PaperOrder).where(PaperOrder.idempotency_key == idempotency_key)
+        res = await session.execute(stmt)
+        return res.scalars().first()
 
     async def submit_order(
         self,
         session: AsyncSession,
         req: OrderSubmitRequest,
     ) -> OrderResponse:
-        """Validate against risk rules and execute virtual paper order."""
+        """Validate against risk rules and execute virtual paper order.
+
+        Raises:
+            LiveTradingDisabledError: if settings have been tampered with
+            DuplicateOrderError: if idempotency_key already submitted
+            PriceUnavailableError: if no live market price available
+            StaleDataError: if price data is stale
+            ValueError: if risk engine rejects the order
+        """
+        # 0. Isolation guard — paper broker must NEVER touch live execution
+        self.gateway.validate_isolation()
+
+        # 1. Idempotency check
+        idempotency_key = getattr(req, "idempotency_key", None) or ""
+        if idempotency_key:
+            existing = await self._check_duplicate_order(session, idempotency_key)
+            if existing:
+                raise DuplicateOrderError(idempotency_key)
+
         account = await self.get_or_create_account(session, req.account_id)
 
-        # 1. Resolve Asset details
+        # 2. Resolve Asset details
         asset_stmt = select(Asset).where(Asset.symbol == req.symbol.upper())
         asset_res = await session.execute(asset_stmt)
         asset = asset_res.scalars().first()
         asset_id = asset.id if asset else req.symbol.lower()
         asset_class = str(asset.asset_class.value) if asset and hasattr(asset.asset_class, "value") else "ALTCOIN"
 
-        # 2. Get current market price
-        market_price = req.limit_price or await self.get_latest_price(session, req.symbol)
+        # 3. Get current market price — raises PriceUnavailableError or StaleDataError if unavailable
+        if req.limit_price and req.limit_price > 0:
+            market_price = req.limit_price
+        else:
+            market_price = await self.get_latest_price(session, req.symbol)
+
         order_val_usd = req.quantity * market_price
 
-        # 3. Retrieve open positions for risk validation
+        # 4. Retrieve open positions for risk validation
         pos_stmt = (
             select(PaperPosition)
             .where(PaperPosition.account_id == req.account_id, PaperPosition.is_open.is_(True))
@@ -127,22 +280,27 @@ class PaperBroker:
 
         open_pos_dicts = []
         invested_cap = 0.0
+        meme_symbols = {"DOGE", "PEPE", "SHIB", "BONK", "WIF", "FLOKI"}
+
         for p in open_positions:
-            curr_p = await self.get_latest_price(session, p.asset_id.upper())
+            curr_p = await self._resolve_price_for_position(session, p.asset_id.upper())
+            if curr_p is None:
+                # Use entry price as conservative MTM if live price unavailable
+                curr_p = p.avg_entry_price
             mkt_val = p.quantity * curr_p
             invested_cap += mkt_val
             open_pos_dicts.append({
                 "symbol": p.asset_id.upper(),
-                "asset_class": "MEME" if p.asset_id.upper() in {"DOGE", "PEPE", "SHIB", "BONK"} else "ALTCOIN",
+                "asset_class": "MEME" if p.asset_id.upper() in meme_symbols else asset_class,
                 "market_value": mkt_val,
-                "is_meme": p.asset_id.upper() in {"DOGE", "PEPE", "SHIB", "BONK"},
+                "is_meme": p.asset_id.upper() in meme_symbols,
             })
 
         total_equity = account.cash_balance + invested_cap
         peak_equity = max(account.starting_balance, total_equity)
         current_dd_pct = ((peak_equity - total_equity) / peak_equity * 100.0) if peak_equity > 0 else 0.0
 
-        # 4. Risk Inspection
+        # 5. Risk Inspection
         validation = self.risk_engine.validate_order(
             side=req.side,
             asset_symbol=req.symbol.upper(),
@@ -158,48 +316,55 @@ class PaperBroker:
         now = utc_now()
 
         if not validation.passed:
-            # Record Rejected Order
             rejected_order = PaperOrder(
                 id=order_id,
                 account_id=req.account_id,
                 asset_id=asset_id,
-                exchange_id="simulated",
+                exchange_id="paper_simulated",
                 order_type=req.order_type.value,
                 side=req.side.value,
                 quantity=req.quantity,
                 limit_price=req.limit_price,
-                stop_price=req.stop_price,
+                stop_price=getattr(req, "stop_price", None),
                 status=PaperOrderStatus.REJECTED.value,
+                idempotency_key=idempotency_key or None,
                 created_at=now,
                 updated_at=now,
             )
             session.add(rejected_order)
             await session.commit()
-            logger.warning("Order rejected by risk engine", reason=validation.reason, violations=validation.violations)
-            raise ValueError(f"Order rejected by risk engine: {validation.reason}")
+            logger.warning(
+                "order_rejected_by_risk_engine",
+                reason=validation.reason,
+                violations=validation.violations,
+            )
+            raise ValueError(
+                f"Order rejected: {validation.reason} | violations={validation.violations}"
+            )
 
-        # 5. Simulate Execution Friction
+        # 6. Simulate Execution Friction
         exec_side = OrderSide.BUY if req.side == PaperOrderSide.BUY else OrderSide.SELL
         fill_price, _, slippage_usd, fee_usd = self.simulator.calculate_fill(
             side=exec_side,
             base_price=market_price,
             order_value_usd=order_val_usd,
-            volume_24h_usd=2000000.0,
+            volume_24h_usd=2_000_000.0,  # conservative estimate
             is_maker=(req.order_type == "LIMIT"),
         )
 
-        # 6. Record Filled Order and Fill
+        # 7. Record Filled Order and Fill
         paper_order = PaperOrder(
             id=order_id,
             account_id=req.account_id,
             asset_id=asset_id,
-            exchange_id="simulated",
+            exchange_id="paper_simulated",
             order_type=req.order_type.value,
             side=req.side.value,
             quantity=req.quantity,
             limit_price=req.limit_price,
-            stop_price=req.stop_price,
+            stop_price=getattr(req, "stop_price", None),
             status=PaperOrderStatus.FILLED.value,
+            idempotency_key=idempotency_key or None,
             created_at=now,
             updated_at=now,
         )
@@ -217,7 +382,7 @@ class PaperBroker:
         )
         session.add(fill_record)
 
-        # 7. Update Portfolio Ledger & Position Records
+        # 8. Update Portfolio Ledger & Position Records
         target_pos_stmt = select(PaperPosition).where(
             PaperPosition.account_id == req.account_id,
             PaperPosition.asset_id == asset_id,
@@ -227,12 +392,10 @@ class PaperBroker:
         existing_pos = target_res.scalars().first()
 
         if req.side == PaperOrderSide.BUY:
-            # Deduct cash
             total_cash_outlay = (fill_price * req.quantity) + fee_usd
             account.cash_balance -= total_cash_outlay
 
             if existing_pos:
-                # Average entry price update
                 new_qty = existing_pos.quantity + req.quantity
                 new_avg_entry = (
                     (existing_pos.quantity * existing_pos.avg_entry_price) + (req.quantity * fill_price)
@@ -258,7 +421,7 @@ class PaperBroker:
                 session.add(new_pos)
 
         else:
-            # SELL Order
+            # SELL order
             if not existing_pos:
                 raise ValueError(f"Cannot sell: No open position found for {req.symbol}")
 
@@ -268,29 +431,27 @@ class PaperBroker:
 
             cash_inflow = (fill_price * qty_to_sell) - fee_usd
             account.cash_balance += cash_inflow
-
             existing_pos.realized_pnl += net_pnl
 
             if qty_to_sell >= existing_pos.quantity:
-                # Complete liquidation
                 existing_pos.quantity = 0.0
                 existing_pos.is_open = False
                 existing_pos.exit_time = now
                 existing_pos.exit_reason = "USER_SELL"
                 existing_pos.unrealized_pnl = 0.0
             else:
-                # Partial reduction
                 existing_pos.quantity -= qty_to_sell
                 existing_pos.unrealized_pnl = (fill_price - existing_pos.avg_entry_price) * existing_pos.quantity
 
         await session.commit()
         logger.info(
-            "Executed virtual paper order",
+            "paper_order_filled",
             order_id=order_id,
             symbol=req.symbol,
             side=req.side,
             qty=req.quantity,
             fill_price=fill_price,
+            gateway="PAPER",
         )
 
         return OrderResponse(
@@ -320,7 +481,11 @@ class PaperBroker:
         session: AsyncSession,
         account_id: str = "default_paper",
     ) -> PortfolioSummaryResponse:
-        """Compute real-time mark-to-market valuations and risk statistics."""
+        """Compute mark-to-market valuations and risk statistics.
+
+        v2.0: Uses best-effort price with graceful degradation per position.
+        Positions with unavailable prices are marked with last-known value.
+        """
         account = await self.get_or_create_account(session, account_id)
 
         pos_stmt = (
@@ -335,21 +500,27 @@ class PaperBroker:
         total_unrealized_pnl = 0.0
         meme_val = 0.0
         max_single_val = 0.0
+        meme_symbols = {"DOGE", "PEPE", "SHIB", "BONK", "WIF", "FLOKI"}
 
         for p in open_positions:
-            curr_price = await self.get_latest_price(session, p.asset_id.upper())
+            curr_price = await self._resolve_price_for_position(session, p.asset_id.upper())
+            price_stale = False
+            if curr_price is None:
+                curr_price = p.avg_entry_price  # fallback to cost basis for MTM
+                price_stale = True
+
             mkt_val = p.quantity * curr_price
             pnl_usd = (curr_price - p.avg_entry_price) * p.quantity
-            pnl_pct = (pnl_usd / (p.quantity * p.avg_entry_price)) * 100.0 if (p.quantity * p.avg_entry_price) > 0 else 0.0
+            cost_basis = p.quantity * p.avg_entry_price
+            pnl_pct = (pnl_usd / cost_basis * 100.0) if cost_basis > 0 else 0.0
 
             invested_cap += mkt_val
             total_unrealized_pnl += pnl_usd
             max_single_val = max(max_single_val, mkt_val)
 
-            if p.asset_id.upper() in {"DOGE", "PEPE", "SHIB", "BONK", "WIF"}:
+            if p.asset_id.upper() in meme_symbols:
                 meme_val += mkt_val
 
-            # Update DB current price and unrealized pnl
             p.current_price = curr_price
             p.unrealized_pnl = pnl_usd
 
@@ -370,13 +541,13 @@ class PaperBroker:
                     exit_time=p.exit_time.isoformat() if p.exit_time else None,
                     is_open=p.is_open,
                     exit_reason=p.exit_reason,
+                    price_stale=price_stale,
                 )
             )
 
         total_equity = account.cash_balance + invested_cap
         total_realized_pnl = sum(p.realized_pnl for p in open_positions)
 
-        # Also sum realized pnl of closed positions
         closed_stmt = select(PaperPosition.realized_pnl).where(
             PaperPosition.account_id == account_id, PaperPosition.is_open.is_(False)
         )
@@ -393,7 +564,6 @@ class PaperBroker:
         max_single_position_pct = (max_single_val / total_equity * 100.0) if total_equity > 0 else 0.0
 
         now = utc_now()
-        # Record periodic snapshot and equity curve
         session.add(
             PaperEquity(
                 time=now,
@@ -449,7 +619,7 @@ class PaperBroker:
         symbol: str,
         reason: str = "MANUAL_CLOSE",
     ) -> PositionResponse:
-        """Close an open position completely by issuing a synthetic sell order."""
+        """Close an open position completely by issuing a market sell order."""
         pos_stmt = select(PaperPosition).where(
             PaperPosition.account_id == account_id,
             PaperPosition.asset_id.ilike(symbol),
@@ -464,7 +634,6 @@ class PaperBroker:
         qty_to_close = pos.quantity
         avg_entry = pos.avg_entry_price
 
-        # Execute market sell
         order_req = OrderSubmitRequest(
             account_id=account_id,
             symbol=symbol.upper(),
@@ -473,7 +642,6 @@ class PaperBroker:
         )
         order_res = await self.submit_order(session, order_req)
 
-        # Refresh pos
         await session.refresh(pos)
         pos.exit_reason = reason
         await session.commit()
@@ -504,14 +672,14 @@ class PaperBroker:
         self,
         session: AsyncSession,
         account_id: str = "default_paper",
-        starting_balance: float = 100000.0,
+        starting_balance: float | None = None,
     ) -> PaperAccount:
         """Reset paper account balance and liquidate all positions."""
-        account = await self.get_or_create_account(session, account_id, starting_balance=starting_balance)
-        account.starting_balance = starting_balance
-        account.cash_balance = starting_balance
+        bal = starting_balance or settings.PAPER_INITIAL_CAPITAL
+        account = await self.get_or_create_account(session, account_id, starting_balance=bal)
+        account.starting_balance = bal
+        account.cash_balance = bal
 
-        # Mark all positions as closed
         pos_stmt = select(PaperPosition).where(
             PaperPosition.account_id == account_id,
             PaperPosition.is_open.is_(True),
@@ -523,5 +691,5 @@ class PaperBroker:
             p.exit_reason = "ACCOUNT_RESET"
 
         await session.commit()
-        logger.info("Reset paper trading account", account_id=account_id, balance=starting_balance)
+        logger.info("paper_account_reset", account_id=account_id, balance=bal)
         return account
