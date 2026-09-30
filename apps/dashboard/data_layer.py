@@ -326,3 +326,115 @@ class DashboardDataLayer:
             "trades_df": trades_df,
             "total_trades": result.total_trades,
         }
+
+    @classmethod
+    def get_paper_portfolio(cls, account_id: str = "default_paper") -> dict:
+        """Fetch real-time paper account summary and positions."""
+        from src.paper.broker import PaperBroker
+
+        async def _query():
+            cls.ensure_seeded_data()
+            factory = get_session_factory()
+            async with factory() as session:
+                broker = PaperBroker()
+                summary = await broker.get_portfolio_summary(session, account_id=account_id)
+                positions_data = [
+                    {
+                        "Asset": p.symbol,
+                        "Side": p.side,
+                        "Quantity": p.quantity,
+                        "Entry Price": f"${p.avg_entry_price:,.2f}",
+                        "Current Price": f"${p.current_price:,.2f}",
+                        "Market Value": f"${p.market_value:,.2f}",
+                        "Unrealized P&L": f"{p.unrealized_pnl:+,.2f} ({p.unrealized_pnl_pct:+.2f}%)",
+                        "Realized P&L": f"${p.realized_pnl:+,.2f}",
+                    }
+                    for p in summary.open_positions
+                ]
+                return {
+                    "account_id": summary.account_id,
+                    "cash_balance": summary.cash_balance,
+                    "invested_capital": summary.invested_capital,
+                    "total_equity": summary.total_equity,
+                    "total_return_pct": summary.total_return_pct,
+                    "unrealized_pnl": summary.unrealized_pnl,
+                    "realized_pnl": summary.realized_pnl,
+                    "drawdown_pct": summary.drawdown_pct,
+                    "meme_exposure_pct": summary.meme_exposure_pct,
+                    "max_single_position_pct": summary.max_single_position_pct,
+                    "open_positions_count": summary.open_positions_count,
+                    "positions_df": pd.DataFrame(positions_data),
+                    "raw_positions": summary.open_positions,
+                }
+
+        return run_async(_query())
+
+    @classmethod
+    def place_paper_order(
+        cls,
+        symbol: str,
+        side: str,
+        quantity: float,
+        account_id: str = "default_paper",
+        order_type: str = "MARKET",
+    ) -> dict:
+        """Place a virtual paper order with risk enforcement."""
+        from src.paper.broker import PaperBroker
+        from src.paper.models import OrderSubmitRequest, PaperOrderSide, PaperOrderType
+
+        async def _order():
+            cls.ensure_seeded_data()
+            factory = get_session_factory()
+            async with factory() as session:
+                broker = PaperBroker()
+                req = OrderSubmitRequest(
+                    account_id=account_id,
+                    symbol=symbol.upper(),
+                    side=PaperOrderSide.BUY if side.upper() == "BUY" else PaperOrderSide.SELL,
+                    order_type=PaperOrderType.MARKET if order_type.upper() == "MARKET" else PaperOrderType.LIMIT,
+                    quantity=quantity,
+                )
+                res = await broker.submit_order(session, req)
+                return {
+                    "status": "SUCCESS",
+                    "order_id": res.id,
+                    "symbol": res.symbol,
+                    "quantity": res.quantity,
+                    "fill_price": res.fills[0].fill_price if res.fills else 0.0,
+                }
+
+        return run_async(_order())
+
+    @classmethod
+    def close_paper_position(cls, symbol: str, account_id: str = "default_paper") -> dict:
+        """Close an open paper position completely."""
+        from src.paper.broker import PaperBroker
+
+        async def _close():
+            cls.ensure_seeded_data()
+            factory = get_session_factory()
+            async with factory() as session:
+                broker = PaperBroker()
+                pos = await broker.close_position(session, account_id=account_id, symbol=symbol)
+                return {
+                    "status": "SUCCESS",
+                    "symbol": pos.symbol,
+                    "realized_pnl": pos.realized_pnl,
+                }
+
+        return run_async(_close())
+
+    @classmethod
+    def reset_paper_account(cls, account_id: str = "default_paper", starting_balance: float = 100000.0) -> dict:
+        """Reset virtual paper account balance."""
+        from src.paper.broker import PaperBroker
+
+        async def _reset():
+            cls.ensure_seeded_data()
+            factory = get_session_factory()
+            async with factory() as session:
+                broker = PaperBroker()
+                acc = await broker.reset_account(session, account_id=account_id, starting_balance=starting_balance)
+                return {"status": "SUCCESS", "cash_balance": acc.cash_balance}
+
+        return run_async(_reset())

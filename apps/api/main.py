@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from apps.api.routes import assets, backtest, health, scores
+from apps.api.routes import assets, backtest, health, paper, scores
 from src.config.settings import get_settings
 from src.database.session import close_db, get_session_factory, init_db
 from src.ingestion.pipeline import seed_default_universe
@@ -73,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(assets.router)
     app.include_router(scores.router)
     app.include_router(backtest.router)
+    app.include_router(paper.router)
 
     return app
 

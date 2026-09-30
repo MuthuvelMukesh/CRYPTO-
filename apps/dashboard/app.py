@@ -1,6 +1,5 @@
 """Cryptocurrency Market Intelligence, Quantitative Factor Scanner & Research Lab Dashboard."""
 
-import pandas as pd
 import streamlit as st
 
 from apps.dashboard.components.charts import (
@@ -388,26 +387,111 @@ elif nav_page == "📊 Asset Deep-Dive":
 # VIEW 6: PAPER PORTFOLIO
 # ---------------------------------------------------------
 elif nav_page == "💼 Paper Portfolio":
-    st.subheader("Paper Trading Virtual Portfolio & Execution Journal")
+    st.subheader("Paper Trading Virtual Brokerage & Execution Terminal")
 
-    p_col1, p_col2, p_col3, p_col4 = st.columns(4)
+    portfolio = DashboardDataLayer.get_paper_portfolio()
+
+    p_col1, p_col2, p_col3, p_col4, p_col5 = st.columns(5)
     with p_col1:
-        st.metric(label="Virtual Capital", value="$100,000.00", delta="Starting: $100k")
+        st.metric(
+            label="Total Equity",
+            value=f"${portfolio['total_equity']:,.2f}",
+            delta=f"Return: {portfolio['total_return_pct']:+.2f}%",
+        )
     with p_col2:
-        st.metric(label="Invested Capital", value="$24,500.00", delta="24.5% Exposure")
+        st.metric(
+            label="Free Cash",
+            value=f"${portfolio['cash_balance']:,.2f}",
+            delta=f"Invested: ${portfolio['invested_capital']:,.2f}",
+        )
     with p_col3:
-        st.metric(label="Unrealized P&L", value="+$1,420.50", delta="+1.42%")
+        st.metric(
+            label="Unrealized P&L",
+            value=f"${portfolio['unrealized_pnl']:+,.2f}",
+            delta=f"Realized: ${portfolio['realized_pnl']:+,.2f}",
+        )
     with p_col4:
-        st.metric(label="Current Drawdown", value="0.0%", delta="Max limit: 15.0%")
+        st.metric(
+            label="Drawdown",
+            value=f"{portfolio['drawdown_pct']:.2f}%",
+            delta="Max limit: 20%",
+            delta_color="inverse",
+        )
+    with p_col5:
+        st.metric(
+            label="Open Positions",
+            value=str(portfolio['open_positions_count']),
+            delta=f"Meme Exp: {portfolio['meme_exposure_pct']:.1f}% / 5%",
+        )
 
+    # Risk Compliance Indicators
     st.markdown("---")
-    st.markdown("#### Open Paper Positions")
-    sample_positions = pd.DataFrame([
-        {"Asset": "BTC", "Side": "LONG", "Entry Price": "$62,400.00", "Current Price": "$64,200.00", "Size (USD)": "$10,000", "Unrealized P&L": "+$288.46 (+2.88%)", "Stop Loss": "$59,800.00"},
-        {"Asset": "SOL", "Side": "LONG", "Entry Price": "$144.50", "Current Price": "$155.00", "Size (USD)": "$8,000", "Unrealized P&L": "+$581.31 (+7.27%)", "Stop Loss": "$138.00"},
-        {"Asset": "NEAR", "Side": "LONG", "Entry Price": "$4.85", "Current Price": "$5.20", "Size (USD)": "$6,500", "Unrealized P&L": "+$469.07 (+7.22%)", "Stop Loss": "$4.55"},
-    ])
-    st.dataframe(sample_positions, use_container_width=True)
+    r_col1, r_col2 = st.columns(2)
+    with r_col1:
+        st.markdown(f"**Meme Coin Exposure:** `{portfolio['meme_exposure_pct']:.1f}%` / `5.0% Limit`")
+        st.progress(min(1.0, portfolio["meme_exposure_pct"] / 5.0))
+    with r_col2:
+        st.markdown(f"**Max Single Asset Concentration:** `{portfolio['max_single_position_pct']:.1f}%` / `25.0% Limit`")
+        st.progress(min(1.0, portfolio["max_single_position_pct"] / 25.0))
+
+    # Order Entry & Trade Management
+    st.markdown("---")
+    trade_col1, trade_col2 = st.columns([1, 1])
+
+    with trade_col1:
+        st.markdown("#### ⚡ Order Routing Terminal")
+        with st.form("paper_order_form"):
+            symbols_avail = sorted(df_scanner["Symbol"].unique()) if not df_scanner.empty else ["BTC", "ETH", "SOL", "DOGE"]
+            order_sym = st.selectbox("Symbol", symbols_avail, index=0)
+            order_side = st.radio("Side", ["BUY", "SELL"], horizontal=True)
+            order_qty = st.number_input("Quantity", min_value=0.0001, value=0.5, step=0.1, format="%.4f")
+            order_type = st.selectbox("Order Type", ["MARKET", "LIMIT"])
+
+            submit_order_btn = st.form_submit_button("🚀 Submit Virtual Order", use_container_width=True)
+
+            if submit_order_btn:
+                try:
+                    res = DashboardDataLayer.place_paper_order(
+                        symbol=order_sym,
+                        side=order_side,
+                        quantity=float(order_qty),
+                        order_type=order_type,
+                    )
+                    st.success(f"Order Filled! {order_side} {order_qty} {order_sym} @ ${res['fill_price']:,.2f}")
+                    st.rerun()
+                except Exception as err:
+                    st.error(f"Order Rejected: {err}")
+
+    with trade_col2:
+        st.markdown("#### ⚙️ Position & Account Actions")
+        # Close position selector
+        open_syms = [p.symbol for p in portfolio["raw_positions"]] if portfolio["raw_positions"] else []
+        if open_syms:
+            close_sym = st.selectbox("Select Open Position to Liquidate", open_syms)
+            if st.button(f"Liquidate 100% {close_sym} Position", use_container_width=True):
+                try:
+                    c_res = DashboardDataLayer.close_paper_position(symbol=close_sym)
+                    st.success(f"Liquidated {close_sym}! Realized P&L: ${c_res['realized_pnl']:+,.2f}")
+                    st.rerun()
+                except Exception as err:
+                    st.error(f"Failed to close position: {err}")
+        else:
+            st.info("No open positions available to liquidate.")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄 Reset Paper Account to $100,000", use_container_width=True):
+            DashboardDataLayer.reset_paper_account()
+            st.success("Virtual account balance reset to $100,000.00!")
+            st.rerun()
+
+    # Open Positions Ledger
+    st.markdown("---")
+    st.markdown("#### Active Open Positions Ledger")
+    positions_df = portfolio["positions_df"]
+    if not positions_df.empty:
+        st.dataframe(positions_df, use_container_width=True)
+    else:
+        st.info("Portfolio currently in 100% Cash reserve. No open positions.")
 
 
 # ---------------------------------------------------------
