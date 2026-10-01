@@ -1,10 +1,11 @@
-"""Database models namespace package."""
+"""Database models namespace package — v2.0."""
 
 from src.database.models.alert import Alert, SystemEvent
 from src.database.models.asset import Asset, AssetCategory, Exchange, Market
 from src.database.models.backtest import Backtest, BacktestTrade
 from src.database.models.base import Base, TimestampMixin
 from src.database.models.features import Feature
+from src.database.models.ledger import LedgerEvent
 from src.database.models.market_data import (
     OHLCV,
     FundingRate,
@@ -26,6 +27,7 @@ from src.database.models.paper import (
     PaperPosition,
     PortfolioSnapshot,
 )
+from src.database.models.scanner import ScannerSnapshot, UniverseSnapshot
 from src.database.models.scoring import Score, Signal
 
 __all__ = [
@@ -39,6 +41,7 @@ __all__ = [
     "Feature",
     "FundingRate",
     "HolderMetric",
+    "LedgerEvent",
     "Liquidation",
     "Market",
     "MarketMetric",
@@ -52,6 +55,7 @@ __all__ = [
     "PaperOrder",
     "PaperPosition",
     "PortfolioSnapshot",
+    "ScannerSnapshot",
     "Score",
     "Signal",
     "SocialMetric",
@@ -59,4 +63,5 @@ __all__ = [
     "TimestampMixin",
     "Tokenomics",
     "Trade",
+    "UniverseSnapshot",
 ]

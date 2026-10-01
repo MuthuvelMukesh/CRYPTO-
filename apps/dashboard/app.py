@@ -12,17 +12,45 @@ from apps.dashboard.components.charts import (
 from apps.dashboard.components.explainability import render_explainability_card
 from apps.dashboard.data_layer import DashboardDataLayer
 from apps.dashboard.theme import apply_theme
+from src.config.constants import DataMode
+from src.config.settings import get_settings
 
 # Page Configuration
 st.set_page_config(
-    page_title="Crypto Quant Lab | Intelligence & Scanner",
-    page_icon="🏛️",
+    page_title="Crypto Intelligence v2.0 | Quant Lab",
+    page_icon="🏦",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # Apply custom dark theme & typography
 apply_theme()
+
+# ── v2.0: DATA MODE BANNER ───────────────────────────────────────────────────
+_settings = get_settings()
+_data_mode = _settings.DATA_MODE
+_MODE_META = {
+    DataMode.LIVE:           ("#22C55E", "#14532D", "⬤ LIVE DATA"),
+    DataMode.HISTORICAL:     ("#3B82F6", "#1E3A8A", "🗓 HISTORICAL DATA"),
+    DataMode.SYNTHETIC_TEST: ("#EAB308", "#713F12", "⚠️ SYNTHETIC TEST DATA — Not for research decisions"),
+    DataMode.REPLAY:         ("#A855F7", "#4A1D96", "▶ REPLAY MODE"),
+}
+_color, _bg, _label = _MODE_META.get(_data_mode, ("#6B7280", "#1F2937", "UNKNOWN MODE"))
+st.markdown(
+    f"""
+    <div style="background:{_bg};border-left:4px solid {_color};padding:0.5rem 1.25rem;
+                border-radius:0 6px 6px 0;margin-bottom:0.75rem;">
+        <span style="color:{_color};font-weight:700;font-size:0.8rem;letter-spacing:0.08em;">{_label}</span>
+        <span style="color:#94A3B8;font-size:0.75rem;margin-left:1.5rem;">
+            v{_settings.APP_VERSION} &bull; {_settings.DEFAULT_EXCHANGE.upper()}
+            &bull; Live Trading: <strong style="color:#F87171;">DISABLED</strong>
+        </span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+# ─────────────────────────────────────────────────────────────────────────────
+
 
 # Load Dashboard Data
 df_scanner = DashboardDataLayer.get_scanner_data()
@@ -54,6 +82,32 @@ nav_page = st.sidebar.radio(
     index=1,  # Default to Scanner
 )
 
+# Sidebar Navigation & System Controls
+st.sidebar.markdown(
+    """
+    <div style="padding: 0.5rem 0 1rem 0;">
+        <h2 style="margin: 0; color: #F8FAFC; font-weight: 800; font-size: 1.3rem;">🏦 QUANT LAB v2.0</h2>
+        <span style="color: #6366F1; font-weight: 600; font-size: 0.8rem; letter-spacing: 0.05em;">CRYPTO INTELLIGENCE PLATFORM</span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+nav_page = st.sidebar.radio(
+    "Navigation",
+    [
+        "🏦 Market Overview",
+        "🔍 Market Scanner",
+        "🚀 Meme Radar",
+        "🔄 Sectors & Rotation",
+        "📊 Asset Deep-Dive",
+        "💼 Paper Portfolio",
+        "🧪 Backtest Lab",
+        "🔔 Alerts Center",
+    ],
+    index=1,
+)
+
 st.sidebar.markdown("---")
 
 # Sidebar Status Widget
@@ -73,9 +127,9 @@ st.sidebar.markdown(
 )
 
 st.sidebar.caption(
-    "**Mode**: Research & Paper Trading Only\n\n"
-    "**Exchange Feeds**: Binance Public, CCXT, CoinGecko\n\n"
-    "**Real-Money Execution**: Disabled by Architecture"
+    f"**Data Mode**: {_data_mode.value}\n\n"
+    "**Exchange**: " + _settings.DEFAULT_EXCHANGE.capitalize() + " Public API\n\n"
+    "**Live Execution**: Disabled by Architecture"
 )
 
 # Header Banner
@@ -172,6 +226,34 @@ if nav_page == "🏛️ Market Overview":
 elif nav_page == "🔍 Market Scanner":
     st.subheader("Multi-Factor Quantitative Screener")
 
+    # v2.0: DATA_UNAVAILABLE guard — never crash, never show stale fabricated data
+    if df_scanner.empty:
+        st.markdown(
+            f"""
+            <div style="background:#1E293B;border:1px solid #334155;border-radius:10px;
+                        padding:2rem;text-align:center;margin:1rem 0;">
+                <div style="font-size:2.5rem;margin-bottom:0.75rem;">📡</div>
+                <h3 style="color:#F1F5F9;margin:0 0 0.5rem 0;">No Market Data Available</h3>
+                <p style="color:#94A3B8;margin:0 0 1rem 0;">
+                    The scanner has no scored assets yet.<br>
+                    This is expected on first launch — real data must be ingested before scores are computed.
+                </p>
+                <div style="background:#0F172A;border-radius:6px;padding:0.75rem 1rem;display:inline-block;text-align:left;">
+                    <code style="color:#22C55E;font-size:0.8rem;">
+                        # Run once to ingest live market data:<br>
+                        python -m src.ingestion.live_ingestor
+                    </code>
+                </div>
+                <p style="color:#64748B;font-size:0.75rem;margin:1rem 0 0 0;">
+                    Data Mode: <strong style="color:#94A3B8;">{_data_mode.value}</strong>
+                    &bull; Synthetic fallbacks are disabled in v2.0.
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.stop()
+
     # Filter controls
     f_col1, f_col2, f_col3, f_col4 = st.columns([2, 2, 2, 2])
 
@@ -198,6 +280,7 @@ elif nav_page == "🔍 Market Scanner":
     filtered_df = filtered_df[filtered_df["Opportunity"] >= min_opp]
     if exclude_flags:
         filtered_df = filtered_df[filtered_df["Risk Flags"].apply(lambda x: len(x) == 0)]
+
 
     # Display Table
     table_cols = [
