@@ -79,7 +79,7 @@ async def ingest_candles_for_asset(
 
     # raw_candles is list of {time_ms, open, high, low, close, volume}
     # Convert to the format OHLCVValidator expects
-    from src.validation.ohlcv_validator import RawOHLCV
+    from src.ingestion.providers.base import RawCandle as RawOHLCV
 
     ohlcv_inputs = [
         RawOHLCV(
@@ -144,17 +144,13 @@ async def run_ingestion_cycle(
     compute_scores: bool = True,
     exchange_id: str | None = None,
     limit: int = 200,
+    _provider: CCXTProvider | None = None,
 ) -> LiveIngestionResult:
     """Run one complete ingestion cycle for the tracked universe.
 
-    Flow:
-      1. Fetch candles from exchange via CCXTProvider for each asset
-      2. Validate via OHLCVValidator
-      3. Store in OHLCV table (upsert)
-      4. Compute features (optional)
-      5. Compute scores (optional)
-
-    Returns a LiveIngestionResult with provenance and status metrics.
+    Args:
+        _provider: optional pre-existing CCXTProvider to reuse (for continuous mode).
+                   If None, a new provider is created and closed after the cycle.
     """
     result = LiveIngestionResult()
     exchange = exchange_id or settings.DEFAULT_EXCHANGE
@@ -168,7 +164,9 @@ async def run_ingestion_cycle(
         data_mode=result.data_mode,
     )
 
-    provider = CCXTProvider(exchange_id=exchange)
+    # Use injected provider or create a temporary one
+    owns_provider = _provider is None
+    provider = _provider if _provider is not None else CCXTProvider(exchange_id=exchange)
     factory = get_session_factory()
 
     try:
@@ -245,41 +243,50 @@ async def run_continuous_ingestion(
     interval_seconds: int = 300,
     timeframe: Timeframe = Timeframe.H1,
 ) -> None:
-    """Run the ingestion loop indefinitely.
+    """Run the ingestion loop indefinitely with a single long-lived provider.
 
-    Used by the background worker process.
-    Each cycle:
-    1. Fetches real market data
-    2. Validates it
-    3. Stores it
-    4. Recomputes features and scores
-
-    Runs every `interval_seconds` (default: 5 minutes for H1).
+    The CCXTProvider is created once and kept open for the lifetime of the
+    process. Each cycle shares the same authenticated exchange session,
+    avoiding the overhead and errors of reconnecting per cycle.
     """
     await init_db()
-    logger.info("continuous_ingestion_started", interval_seconds=interval_seconds)
+    exchange = settings.DEFAULT_EXCHANGE
+    provider = CCXTProvider(exchange_id=exchange)
+    factory = get_session_factory()
 
-    while True:
-        try:
-            result = await run_ingestion_cycle(
-                timeframe=timeframe,
-                compute_features=True,
-                compute_scores=True,
-            )
-            logger.info(
-                "ingestion_cycle_summary",
-                succeeded=result.assets_succeeded,
-                failed=result.assets_failed,
-                candles=result.total_candles_stored,
-                duration=result.duration_seconds,
-            )
-        except Exception as e:
-            logger.error("ingestion_cycle_fatal_error", error=str(e))
+    logger.info(
+        "continuous_ingestion_started",
+        interval_seconds=interval_seconds,
+        exchange=exchange,
+    )
 
-        logger.info("ingestion_sleeping", seconds=interval_seconds)
-        await asyncio.sleep(interval_seconds)
+    try:
+        while True:
+            try:
+                result = await run_ingestion_cycle(
+                    timeframe=timeframe,
+                    compute_features=True,
+                    compute_scores=True,
+                    _provider=provider,  # reuse existing connection
+                )
+                logger.info(
+                    "ingestion_cycle_summary",
+                    succeeded=result.assets_succeeded,
+                    failed=result.assets_failed,
+                    candles=result.total_candles_stored,
+                    duration=result.duration_seconds,
+                )
+            except Exception as e:
+                logger.error("ingestion_cycle_fatal_error", error=str(e))
+
+            logger.info("ingestion_sleeping", seconds=interval_seconds)
+            await asyncio.sleep(interval_seconds)
+    finally:
+        await provider.close()
+        logger.info("continuous_ingestion_stopped")
 
 
 if __name__ == "__main__":
     """Entry point for running the ingestion worker standalone."""
     asyncio.run(run_continuous_ingestion())
+

@@ -11,6 +11,15 @@ from src.ingestion.pipeline import seed_default_universe
 async def test_paper_trading_api_endpoints_and_risk(client: AsyncClient, db_session: AsyncSession) -> None:
     await seed_default_universe(db_session, exchange_id="binance")
 
+    from src.database.models import OHLCV
+    from src.utils.time import utc_now
+    now = utc_now()
+    db_session.add_all([
+        OHLCV(time=now, market_id="binance:BTC/USDT", timeframe="1h", open=60000.0, high=60100.0, low=59900.0, close=60000.0, volume=100.0, validation_status="GOOD"),
+        OHLCV(time=now, market_id="binance:DOGE/USDT", timeframe="1h", open=0.125, high=0.13, low=0.12, close=0.125, volume=10000.0, validation_status="GOOD"),
+    ])
+    await db_session.commit()
+
     # 1. GET /api/v1/paper/account
     res_acc = await client.get("/api/v1/paper/account?account_id=api_test")
     assert res_acc.status_code == 200

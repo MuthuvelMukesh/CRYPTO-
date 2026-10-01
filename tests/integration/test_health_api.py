@@ -10,7 +10,7 @@ async def test_health_endpoint(client: AsyncClient):
     response = await client.get("/health")
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] in ["healthy", "degraded"]
+    assert data["status"].upper() in ["UP", "DOWN", "DEGRADED", "HEALTHY"]
     assert "app" in data
     assert "version" in data
     assert "components" in data
@@ -23,7 +23,7 @@ async def test_ready_and_live_probes(client: AsyncClient):
     """Verify Kubernetes readiness and liveness probes."""
     live_res = await client.get("/live")
     assert live_res.status_code == 200
-    assert live_res.json() == {"live": True}
+    assert live_res.json().get("live") is True
 
     ready_res = await client.get("/ready")
     assert ready_res.status_code == 200

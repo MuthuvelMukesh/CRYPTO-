@@ -38,12 +38,12 @@ async def test_dexscreener_parse_raw_pair() -> None:
 
 
 @pytest.mark.asyncio
-async def test_dexscreener_fallback_pairs() -> None:
+async def test_dexscreener_network_error_raises() -> None:
+    """In v2.0, network failures must raise ExternalProviderUnavailableError."""
+    from unittest.mock import AsyncMock, patch
+    from src.config.exceptions import ExternalProviderUnavailableError
+
     provider = DexScreenerProvider()
-    # Offline fallback test
-    pairs = provider._get_fallback_pairs("DOGE")
-    assert len(pairs) >= 1
-    doge = pairs[0]
-    assert doge.base_token_symbol == "DOGE"
-    assert doge.liquidity_usd > 1000000.0
-    assert doge.buy_pressure_ratio > 0.0
+    with patch.object(provider.client, "get", side_effect=Exception("Connection refused")):
+        with pytest.raises(ExternalProviderUnavailableError):
+            await provider.search_pairs("DOGE")

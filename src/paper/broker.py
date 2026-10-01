@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backtesting.execution import ExecutionSimulator
 from src.backtesting.models import OrderSide, SlippageModelType
-from src.config.constants import RiskRejectionCode
+from src.config.constants import LedgerEventType, RiskRejectionCode
 from src.config.exceptions import (
     DuplicateOrderError,
     LiveTradingDisabledError,
@@ -28,6 +28,7 @@ from src.config.settings import get_settings
 from src.database.models import (
     OHLCV,
     Asset,
+    LedgerEvent,
     PaperAccount,
     PaperEquity,
     PaperFill,
@@ -182,13 +183,23 @@ class PaperBroker:
                 details=f"Most recent OHLCV record for {symbol} has null or zero close price.",
             )
 
-        # Check freshness
+        # Check freshness taking into account the timeframe span of the candle
+        tf_duration_map = {
+            "5m": 300,
+            "15m": 900,
+            "1h": 3600,
+            "4h": 14400,
+            "1d": 86400,
+        }
+        bar_duration = tf_duration_map.get(candle.timeframe, 3600)
+        effective_threshold = (max_age_seconds or threshold) + bar_duration
+
         age_seconds = (datetime.now(UTC) - candle.time.replace(tzinfo=UTC)).total_seconds()
-        if age_seconds > threshold:
+        if age_seconds > effective_threshold:
             raise StaleDataError(
                 symbol=symbol,
                 age_seconds=age_seconds,
-                threshold_seconds=threshold,
+                threshold_seconds=effective_threshold,
                 source="ohlcv_db",
             )
 
@@ -228,6 +239,38 @@ class PaperBroker:
         stmt = select(PaperOrder).where(PaperOrder.idempotency_key == idempotency_key)
         res = await session.execute(stmt)
         return res.scalars().first()
+
+    async def _emit_ledger_event(
+        self,
+        session: AsyncSession,
+        event_type: LedgerEventType | str,
+        account_id: str,
+        order_id: str | None = None,
+        asset_id: str | None = None,
+        quantity: float | None = None,
+        price: float | None = None,
+        amount_usd: float | None = None,
+        cash_balance_after: float | None = None,
+        payload: dict | None = None,
+    ) -> LedgerEvent:
+        """Record an immutable ledger event for audit and state recovery — v2.0."""
+        import json
+        ev = LedgerEvent(
+            id=str(uuid.uuid4()),
+            event_type=str(event_type.value if hasattr(event_type, "value") else event_type),
+            account_id=account_id,
+            order_id=order_id,
+            asset_id=asset_id,
+            quantity=quantity,
+            price=price,
+            amount_usd=amount_usd,
+            cash_balance_after=cash_balance_after,
+            payload_json=json.dumps(payload) if payload else None,
+            data_mode=settings.DATA_MODE.value,
+            created_at=utc_now(),
+        )
+        session.add(ev)
+        return ev
 
     async def submit_order(
         self,
@@ -332,6 +375,15 @@ class PaperBroker:
                 updated_at=now,
             )
             session.add(rejected_order)
+            await self._emit_ledger_event(
+                session=session,
+                event_type=LedgerEventType.ORDER_REJECTED,
+                account_id=req.account_id,
+                order_id=order_id,
+                asset_id=asset_id,
+                quantity=req.quantity,
+                payload={"reason": validation.reason, "violations": validation.violations},
+            )
             await session.commit()
             logger.warning(
                 "order_rejected_by_risk_engine",
@@ -442,6 +494,24 @@ class PaperBroker:
             else:
                 existing_pos.quantity -= qty_to_sell
                 existing_pos.unrealized_pnl = (fill_price - existing_pos.avg_entry_price) * existing_pos.quantity
+
+        await self._emit_ledger_event(
+            session=session,
+            event_type=LedgerEventType.ORDER_FILLED,
+            account_id=req.account_id,
+            order_id=order_id,
+            asset_id=asset_id,
+            quantity=req.quantity,
+            price=fill_price,
+            amount_usd=round(fill_price * req.quantity, 2),
+            cash_balance_after=round(account.cash_balance, 2),
+            payload={
+                "side": req.side.value,
+                "order_type": req.order_type.value,
+                "fee_usd": round(fee_usd, 4),
+                "slippage_usd": round(slippage_usd, 4),
+            },
+        )
 
         await session.commit()
         logger.info(
@@ -689,6 +759,14 @@ class PaperBroker:
             p.is_open = False
             p.exit_time = utc_now()
             p.exit_reason = "ACCOUNT_RESET"
+
+        await self._emit_ledger_event(
+            session=session,
+            event_type=LedgerEventType.ACCOUNT_CREATED,
+            account_id=account_id,
+            cash_balance_after=bal,
+            payload={"action": "RESET_ACCOUNT", "starting_balance": bal},
+        )
 
         await session.commit()
         logger.info("paper_account_reset", account_id=account_id, balance=bal)

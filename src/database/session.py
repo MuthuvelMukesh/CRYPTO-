@@ -62,12 +62,19 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 
 async def init_db() -> None:
     """Create all database tables asynchronously."""
+    settings = get_settings()
     engine = get_engine()
     # Import all models to ensure they are registered with Base.metadata
     import src.database.models  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        if settings.is_sqlite:
+            from sqlalchemy import text
+            try:
+                await conn.execute(text("ALTER TABLE paper_orders ADD COLUMN idempotency_key VARCHAR(64)"))
+            except Exception:
+                pass  # already exists or new db
     logger.info("database_tables_initialized")
 
 

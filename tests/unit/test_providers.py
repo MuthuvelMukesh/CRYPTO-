@@ -11,7 +11,7 @@ from src.ingestion.providers.coingecko_provider import CoinGeckoProvider
 
 @pytest.mark.asyncio
 async def test_ccxt_provider_fetch_ohlcv_mock():
-    """Verify CCXT provider parses OHLCV lists into RawCandle models."""
+    """Verify CCXT provider parses OHLCV lists into candle dicts."""
     provider = CCXTProvider(exchange_id="binance")
 
     # Mock raw CCXT response: [[timestamp, open, high, low, close, volume], ...]
@@ -19,29 +19,27 @@ async def test_ccxt_provider_fetch_ohlcv_mock():
         [1700000000000, 42000.0, 42500.0, 41800.0, 42300.0, 150.5],
         [1700003600000, 42300.0, 42800.0, 42100.0, 42600.0, 200.1],
     ]
-    provider.client.fetch_ohlcv = AsyncMock(return_value=mock_data)
+    provider._exchange = AsyncMock()
+    provider._exchange.fetch_ohlcv = AsyncMock(return_value=mock_data)
 
-    candles = await provider.fetch_ohlcv("BTC/USDT", timeframe=Timeframe.H1)
+    candles = await provider.fetch_ohlcv("BTC/USDT", timeframe="1h")
     assert len(candles) == 2
-    assert candles[0].open == 42000.0
-    assert candles[0].close == 42300.0
-    assert candles[1].volume == 200.1
-    assert provider.is_available is True
-
-    await provider.close()
+    assert candles[0]["open"] == 42000.0
+    assert candles[0]["close"] == 42300.0
+    assert candles[1]["volume"] == 200.1
 
 
 @pytest.mark.asyncio
 async def test_ccxt_provider_error_handling():
-    """Verify CCXT provider catches network exceptions and enters degraded mode."""
+    """Verify CCXT provider raises DataUnavailableError on exchange exceptions."""
+    from src.config.exceptions import DataUnavailableError
+
     provider = CCXTProvider(exchange_id="binance")
-    provider.client.fetch_ohlcv = AsyncMock(side_effect=Exception("Exchange network timeout"))
+    provider._exchange = AsyncMock()
+    provider._exchange.fetch_ohlcv = AsyncMock(side_effect=Exception("Exchange network timeout"))
 
-    candles = await provider.fetch_ohlcv("BTC/USDT", timeframe=Timeframe.H1)
-    assert candles == []
-    assert provider.is_available is False
-
-    await provider.close()
+    with pytest.raises(DataUnavailableError):
+        await provider.fetch_ohlcv("BTC/USDT", timeframe="1h")
 
 
 @pytest.mark.asyncio

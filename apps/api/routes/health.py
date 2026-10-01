@@ -142,14 +142,16 @@ async def get_market_data_freshness() -> dict:
             ct = candle.time
             if ct.tzinfo is None:
                 ct = ct.replace(tzinfo=UTC)
-            age = (now - ct).total_seconds()
-            st = HealthStatus.UP if age <= threshold else HealthStatus.STALE
+            tf_duration_map = {"5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}
+            bar_duration = tf_duration_map.get(candle.timeframe, 3600)
+            is_fresh = age <= (threshold + bar_duration)
+            st = HealthStatus.UP if is_fresh else HealthStatus.STALE
             assets_status.append({
                 "asset_id": asset.id,
                 "status": st.value,
                 "latest_candle_time": ct.isoformat(),
                 "age_seconds": round(age, 1),
-                "is_fresh": age <= threshold,
+                "is_fresh": is_fresh,
             })
 
     stale_count = sum(1 for a in assets_status if a["status"] != HealthStatus.UP.value)
@@ -196,6 +198,8 @@ async def _check_market_data_freshness() -> HealthStatus:
             if ct.tzinfo is None:
                 ct = ct.replace(tzinfo=UTC)
             age = (now - ct).total_seconds()
-            return HealthStatus.UP if age <= threshold else HealthStatus.STALE
+            tf_duration_map = {"5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}
+            bar_duration = tf_duration_map.get(latest.timeframe, 3600)
+            return HealthStatus.UP if age <= (threshold + bar_duration) else HealthStatus.STALE
     except Exception:
         return HealthStatus.DOWN

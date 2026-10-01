@@ -3,14 +3,33 @@
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.database.models import OHLCV
 from src.ingestion.pipeline import seed_default_universe
 from src.paper.broker import PaperBroker
 from src.paper.models import OrderSubmitRequest, PaperOrderSide, PaperOrderType
+from src.utils.time import utc_now
+
+
+async def _seed_candle(session: AsyncSession, market_id: str, close: float) -> None:
+    c = OHLCV(
+        time=utc_now(),
+        market_id=market_id,
+        timeframe="1h",
+        open=close,
+        high=close * 1.01,
+        low=close * 0.99,
+        close=close,
+        volume=100.0,
+        validation_status="GOOD",
+    )
+    session.add(c)
+    await session.commit()
 
 
 @pytest.mark.asyncio
 async def test_paper_account_lifecycle_and_buy_order(db_session: AsyncSession) -> None:
     await seed_default_universe(db_session, exchange_id="binance")
+    await _seed_candle(db_session, "binance:BTC/USDT", 60000.0)
     broker = PaperBroker()
 
     # 1. Initialize account
@@ -45,6 +64,7 @@ async def test_paper_account_lifecycle_and_buy_order(db_session: AsyncSession) -
 @pytest.mark.asyncio
 async def test_multiple_buys_and_averaging_entry_price(db_session: AsyncSession) -> None:
     await seed_default_universe(db_session, exchange_id="binance")
+    await _seed_candle(db_session, "binance:SOL/USDT", 150.0)
     broker = PaperBroker()
     account_id = "test_avg"
     await broker.get_or_create_account(db_session, account_id=account_id, starting_balance=50000.0)
@@ -70,6 +90,7 @@ async def test_multiple_buys_and_averaging_entry_price(db_session: AsyncSession)
 @pytest.mark.asyncio
 async def test_sell_order_and_realized_pnl(db_session: AsyncSession) -> None:
     await seed_default_universe(db_session, exchange_id="binance")
+    await _seed_candle(db_session, "binance:ETH/USDT", 3000.0)
     broker = PaperBroker()
     account_id = "test_sell"
     await broker.get_or_create_account(db_session, account_id=account_id, starting_balance=100000.0)
@@ -105,6 +126,7 @@ async def test_sell_order_and_realized_pnl(db_session: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_account_reset(db_session: AsyncSession) -> None:
     await seed_default_universe(db_session, exchange_id="binance")
+    await _seed_candle(db_session, "binance:SOL/USDT", 150.0)
     broker = PaperBroker()
     account_id = "test_reset"
     await broker.get_or_create_account(db_session, account_id=account_id, starting_balance=100000.0)

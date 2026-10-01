@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.deps import get_db
+from src.config.exceptions import CryptoIntelligenceError
 from src.paper.broker import PaperBroker
 from src.paper.models import (
     OrderResponse,
@@ -51,7 +52,7 @@ async def place_paper_order(
     """Submit a paper market or limit order with automated risk controls and micro-structure slippage."""
     try:
         return await broker.submit_order(db, req)
-    except ValueError as e:
+    except (ValueError, CryptoIntelligenceError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
@@ -64,7 +65,7 @@ async def close_paper_position(
     """Liquidate an open position completely at current market price."""
     try:
         return await broker.close_position(db, account_id=account_id, symbol=symbol)
-    except ValueError as e:
+    except (ValueError, CryptoIntelligenceError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 

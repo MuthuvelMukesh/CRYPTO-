@@ -63,10 +63,18 @@ class DexScreenerProvider:
         self.timeout_sec = timeout_sec
         self._client: httpx.AsyncClient | None = None
 
-    async def _get_client(self) -> httpx.AsyncClient:
+    @property
+    def client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(timeout=self.timeout_sec)
         return self._client
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        return self.client
+
+    async def close(self) -> None:
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
 
     async def search_pairs(self, query: str) -> list[DexPairMetrics]:
         """Search DEX pairs matching a symbol or token address.

@@ -69,8 +69,9 @@ async def get_scanner_rankings(
                 ct = candle.time
                 if ct.tzinfo is None:
                     ct = ct.replace(tzinfo=UTC)
-                age_seconds = round((now - ct).total_seconds(), 1)
-                data_fresh = age_seconds <= threshold
+                tf_duration_map = {"5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}
+                bar_duration = tf_duration_map.get(candle.timeframe, 3600)
+                data_fresh = age_seconds <= (threshold + bar_duration)
                 price = float(candle.close)
 
             if not data_fresh:

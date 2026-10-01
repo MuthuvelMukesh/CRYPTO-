@@ -94,6 +94,21 @@ def create_app() -> FastAPI:
     app.include_router(alerts.router)
     app.include_router(scanner.router)
 
+    from fastapi import Request
+    from fastapi.responses import JSONResponse
+    from src.config.exceptions import CryptoIntelligenceError
+
+    @app.exception_handler(CryptoIntelligenceError)
+    async def crypto_intelligence_error_handler(request: Request, exc: CryptoIntelligenceError) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": type(exc).__name__,
+                "message": str(exc),
+                "detail": getattr(exc, "details", None) or str(exc),
+            },
+        )
+
     return app
 
 
