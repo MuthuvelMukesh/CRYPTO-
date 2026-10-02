@@ -79,6 +79,8 @@ class BacktestTradeRecord:
     fees_usd: float = 0.0
     slippage_usd: float = 0.0
     exit_reason: str = "SIGNAL"
+    low_confidence: bool = False
+    low_confidence_reason: str | None = None
 
 
 @dataclass
@@ -112,6 +114,8 @@ class BacktestConfig(BaseModel):
     max_open_positions: int = Field(default=10, ge=1, le=50, description="Maximum concurrent active positions")
     max_position_weight: float = Field(default=0.25, ge=0.01, le=1.0, description="Max equity fraction per asset")
     cash_buffer_pct: float = Field(default=0.02, ge=0.0, le=0.5, description="Min cash reserve fraction")
+    timeframe: str = Field(default="1d", description="Bar timeframe (e.g. 1h, 1d, 4h)")
+    intrabar_order: str = Field(default="stop_first", description="Bracket trigger priority: 'stop_first' or 'tp_first'")
     parameters: dict[str, Any] = Field(default_factory=dict, description="Strategy-specific hyperparameters")
 
 
@@ -122,7 +126,7 @@ class BacktestResult(BaseModel):
 
     id: str = Field(..., description="Unique backtest execution UUID")
     config: BacktestConfig
-    metrics: dict[str, float] = Field(..., description="Calculated statistical and financial metrics")
+    metrics: dict[str, Any] = Field(..., description="Calculated statistical and financial metrics")
     total_trades: int = Field(default=0)
     trades: list[dict[str, Any]] = Field(default_factory=list, description="List of trade logs")
     equity_curve: list[dict[str, Any]] = Field(default_factory=list, description="Time series of equity values")

@@ -116,3 +116,70 @@ def test_bracket_triggers() -> None:
     assert res_tp is not None
     assert res_tp[0] == "TAKE_PROFIT"
     assert res_tp[1] == 120.0
+
+
+def test_bracket_gap_handling() -> None:
+    sim = ExecutionSimulator()
+    entry = 100.0
+
+    # Gap down on open beyond Stop Loss (SL = 90.0, Open = 85.0)
+    # Fill must be min(open, stop_price) = 85.0
+    res_gap_sl = sim.check_bracket_triggers(
+        entry_price=entry,
+        candle_high=88.0,
+        candle_low=80.0,
+        candle_open=85.0,
+        stop_loss_pct=0.10,
+        take_profit_pct=0.20,
+    )
+    assert res_gap_sl is not None
+    assert res_gap_sl[0] == "STOP_LOSS"
+    assert res_gap_sl[1] == 85.0  # Filled at open due to gap down
+
+    # Gap up on open beyond Take Profit (TP = 120.0, Open = 125.0)
+    # Fill must be max(open, tp_price) = 125.0
+    res_gap_tp = sim.check_bracket_triggers(
+        entry_price=entry,
+        candle_high=130.0,
+        candle_low=122.0,
+        candle_open=125.0,
+        stop_loss_pct=0.10,
+        take_profit_pct=0.20,
+    )
+    assert res_gap_tp is not None
+    assert res_gap_tp[0] == "TAKE_PROFIT"
+    assert res_gap_tp[1] == 125.0  # Filled at open due to gap up
+
+
+def test_bracket_intrabar_ordering() -> None:
+    sim = ExecutionSimulator()
+    entry = 100.0
+
+    # Wide bar breaching both SL (90.0) and TP (120.0)
+    # 1. Default / "stop_first": stop loss takes priority
+    res_stop_first = sim.check_bracket_triggers(
+        entry_price=entry,
+        candle_high=125.0,
+        candle_low=85.0,
+        candle_open=100.0,
+        stop_loss_pct=0.10,
+        take_profit_pct=0.20,
+        intrabar_order="stop_first",
+    )
+    assert res_stop_first is not None
+    assert res_stop_first[0] == "STOP_LOSS"
+    assert res_stop_first[1] == 90.0
+
+    # 2. "tp_first": take profit takes priority
+    res_tp_first = sim.check_bracket_triggers(
+        entry_price=entry,
+        candle_high=125.0,
+        candle_low=85.0,
+        candle_open=100.0,
+        stop_loss_pct=0.10,
+        take_profit_pct=0.20,
+        intrabar_order="tp_first",
+    )
+    assert res_tp_first is not None
+    assert res_tp_first[0] == "TAKE_PROFIT"
+    assert res_tp_first[1] == 120.0

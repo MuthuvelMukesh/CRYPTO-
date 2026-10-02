@@ -226,15 +226,69 @@ def calculate_trade_metrics(trades: Sequence[BacktestTradeRecord]) -> dict[str, 
     }
 
 
+TIMEFRAME_PERIODS_PER_YEAR: dict[str, int] = {
+    "1m": 525600,
+    "3m": 175200,
+    "5m": 105120,
+    "15m": 35040,
+    "30m": 17520,
+    "1h": 8760,
+    "2h": 4380,
+    "4h": 2190,
+    "6h": 1460,
+    "8h": 1095,
+    "12h": 730,
+    "1d": 365,
+    "d": 365,
+    "daily": 365,
+    "1w": 52,
+    "w": 52,
+    "weekly": 52,
+}
+
+
+def periods_per_year_from_timeframe(timeframe: str | None = None, default: int = 365) -> int:
+    """Derive annual periods count from candle timeframe string (e.g. 1h -> 8760, 1d -> 365)."""
+    if not timeframe:
+        return default
+    return TIMEFRAME_PERIODS_PER_YEAR.get(timeframe.lower().strip(), default)
+
+
 def compute_complete_metrics(
     equity_curve: list[EquityPoint],
     trades: list[BacktestTradeRecord],
     start_date: datetime,
     end_date: datetime,
+    timeframe: str | None = None,
+    periods_per_year: int | None = None,
 ) -> dict[str, Any]:
     """Calculate comprehensive performance, risk, and attribution metrics for backtest."""
     if not equity_curve:
         return {}
+
+    # Resolve annualization periods per year
+    if periods_per_year is None:
+        if timeframe is not None:
+            periods_per_year = periods_per_year_from_timeframe(timeframe)
+        elif len(equity_curve) >= 2:
+            deltas = [
+                (equity_curve[i].time - equity_curve[i - 1].time).total_seconds()
+                for i in range(1, len(equity_curve))
+            ]
+            median_delta = float(np.median(deltas)) if deltas else 86400.0
+            if median_delta > 0:
+                if abs(median_delta - 3600.0) < 60:
+                    periods_per_year = 8760
+                elif abs(median_delta - 86400.0) < 300:
+                    periods_per_year = 365
+                elif abs(median_delta - 14400.0) < 120:
+                    periods_per_year = 2190
+                else:
+                    periods_per_year = max(1, int(round((365.25 * 86400.0) / median_delta)))
+            else:
+                periods_per_year = 365
+        else:
+            periods_per_year = 365
 
     initial_equity = equity_curve[0].equity
     final_equity = equity_curve[-1].equity
@@ -255,9 +309,9 @@ def compute_complete_metrics(
         daily_returns.append(ret)
 
     cagr = calculate_cagr(initial_equity, final_equity, start_date, end_date)
-    volatility = calculate_annualized_volatility(daily_returns)
-    sharpe = calculate_sharpe_ratio(daily_returns)
-    sortino = calculate_sortino_ratio(daily_returns)
+    volatility = calculate_annualized_volatility(daily_returns, periods_per_year=periods_per_year)
+    sharpe = calculate_sharpe_ratio(daily_returns, periods_per_year=periods_per_year)
+    sortino = calculate_sortino_ratio(daily_returns, periods_per_year=periods_per_year)
     max_dd, _, _ = calculate_max_drawdown(equity_values)
     calmar = calculate_calmar_ratio(cagr, max_dd)
 
@@ -296,6 +350,7 @@ def compute_complete_metrics(
         "calmar_ratio": round(calmar, 2),
         "beta": round(beta, 2),
         "alpha_pct": round(alpha_pct, 2),
+        "periods_per_year": periods_per_year,
     }
 
     metrics.update(trade_stats)

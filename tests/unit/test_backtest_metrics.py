@@ -55,6 +55,27 @@ def test_volatility_sharpe_and_sortino() -> None:
     assert sortino >= sharpe
 
 
+def test_annualization_hourly_and_daily() -> None:
+    """Test annualization of volatility, Sharpe, and Sortino for daily (365) and hourly (8760) periods."""
+    returns = [0.005, -0.002, 0.008, -0.003, 0.006, 0.001] * 20
+
+    # Daily (365 periods per year)
+    vol_daily = calculate_annualized_volatility(returns, periods_per_year=365)
+    sharpe_daily = calculate_sharpe_ratio(returns, periods_per_year=365)
+    sortino_daily = calculate_sortino_ratio(returns, periods_per_year=365)
+
+    # Hourly (8760 periods per year)
+    vol_hourly = calculate_annualized_volatility(returns, periods_per_year=8760)
+    sharpe_hourly = calculate_sharpe_ratio(returns, periods_per_year=8760)
+    sortino_hourly = calculate_sortino_ratio(returns, periods_per_year=8760)
+
+    # Ratio of hourly to daily must equal sqrt(8760 / 365) = sqrt(24) ≈ 4.89898
+    expected_ratio = (8760 / 365) ** 0.5
+    assert pytest.approx(vol_hourly / vol_daily, rel=1e-3) == expected_ratio
+    assert pytest.approx(sharpe_hourly / sharpe_daily, rel=1e-3) == expected_ratio
+    assert pytest.approx(sortino_hourly / sortino_daily, rel=1e-3) == expected_ratio
+
+
 def test_max_drawdown_and_drawdown_series() -> None:
     equities = [100.0, 120.0, 150.0, 120.0, 90.0, 110.0, 160.0]
     # Peak is 150, trough is 90 -> (150 - 90) / 150 = 40%
@@ -147,3 +168,23 @@ def test_complete_metrics_aggregation() -> None:
     assert metrics["excess_return_pct"] == 14.5
     assert metrics["total_trades"] == 1.0
     assert metrics["win_rate"] == 100.0
+
+
+def test_compute_complete_metrics_hourly_annualization() -> None:
+    t0 = datetime(2023, 1, 1)
+    # Hourly equity curve (1 hour step)
+    curve_hourly = [
+        EquityPoint(time=t0 + timedelta(hours=i), equity=100000.0 * (1.0 + (0.001 * (i % 3 - 1))), cash=10000.0,
+                    positions_value=90000.0, drawdown_pct=0.0,
+                    benchmark_equity=100000.0)
+        for i in range(100)
+    ]
+    # Inferred from timeframe="1h" or hourly curve
+    metrics_hourly = compute_complete_metrics(curve_hourly, [], t0, t0 + timedelta(hours=99), timeframe="1h")
+    metrics_daily = compute_complete_metrics(curve_hourly, [], t0, t0 + timedelta(hours=99), timeframe="1d")
+
+    assert metrics_hourly["periods_per_year"] == 8760
+    assert metrics_daily["periods_per_year"] == 365
+
+    # Volatility with 8760 periods/yr should be sqrt(24) times volatility with 365 periods/yr (allowing for 2-decimal rounding)
+    assert pytest.approx(metrics_hourly["annualized_volatility"] / metrics_daily["annualized_volatility"], rel=1e-2) == (8760 / 365) ** 0.5

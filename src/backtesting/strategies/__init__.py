@@ -1,12 +1,14 @@
 """Quantitative systematic trading strategies for backtesting and paper trading."""
 
+from typing import Any
+
 from src.backtesting.strategies.base import BaseStrategy
 from src.backtesting.strategies.factor_rank import FactorRankStrategy
 from src.backtesting.strategies.momentum import MomentumBreakoutStrategy
 from src.backtesting.strategies.relative_strength import RelativeStrengthRotationStrategy
 from src.backtesting.strategies.trend_regime import TrendRegimeStrategy
 
-STRATEGY_REGISTRY: dict[str, type[BaseStrategy]] = {
+STRATEGY_REGISTRY: dict[str, Any] = {
     "MomentumBreakout": MomentumBreakoutStrategy,
     "TrendRegimeFilter": TrendRegimeStrategy,
     "RelativeStrengthRotation": RelativeStrengthRotationStrategy,
