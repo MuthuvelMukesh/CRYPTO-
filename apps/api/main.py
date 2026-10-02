@@ -47,6 +47,7 @@ from src.config.exceptions import CryptoIntelligenceError
 from src.config.settings import get_settings
 from src.database.session import close_db, get_session_factory, init_db
 from src.ingestion.pipeline import seed_default_universe
+from src.observability.metrics import PrometheusMetricsMiddleware
 from src.utils.logging import get_logger, setup_logging
 
 logger = get_logger("apps.api.main")
@@ -127,6 +128,7 @@ def create_app() -> FastAPI:
     app.add_middleware(CSRFProtectionMiddleware)
     app.add_middleware(RateLimiterMiddleware)
     app.add_middleware(RequestIdMiddleware)
+    app.add_middleware(PrometheusMetricsMiddleware)
 
     # RFC 7807 Problem+JSON Exception Handlers
     app.add_exception_handler(StarletteHTTPException, problem_http_exception_handler)

@@ -3,27 +3,35 @@ services:
     image: timescale/timescaledb:2.16.1-pg16
     container_name: crypto_timescaledb
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      POSTGRES_DB: crypto_intel
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB:-crypto_intel}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgrespassword}
+    # Security: Do NOT publish internal database ports to the host by default
+    # For local debugging only:
+    # ports:
+    #   - "127.0.0.1:5432:5432"
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
       - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d crypto_intel"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-crypto_intel}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - internal_network
 
   redis:
     image: redis:7.4.1-alpine
     container_name: crypto_redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    # Security: Do NOT publish internal cache ports to the host by default
+    # For local debugging only:
+    # ports:
+    #   - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -31,6 +39,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - internal_network
 
   api:
     build:
@@ -43,19 +53,23 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
-      - ENVIRONMENT=production
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@timescaledb:5432/crypto_intel
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgrespassword}@timescaledb:5432/${POSTGRES_DB:-crypto_intel}
       - REDIS_URL=redis://redis:6379/0
       - API_HOST=0.0.0.0
       - API_PORT=8000
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
       timeout: 5s
       retries: 3
+    networks:
+      - internal_network
 
   dashboard:
     build:
@@ -64,12 +78,22 @@ services:
     container_name: crypto_dashboard
     restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    env_file:
+      - .env
     environment:
       - API_URL=http://api:8000
       - DASHBOARD_PORT=8501
-    ports:
-      - "8501:8501"
+    expose:
+      - "8501"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - internal_network
 
   worker:
     build:
@@ -82,11 +106,50 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
-      - ENVIRONMENT=production
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@timescaledb:5432/crypto_intel
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgrespassword}@timescaledb:5432/${POSTGRES_DB:-crypto_intel}
       - REDIS_URL=redis://redis:6379/0
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import sys; sys.exit(0)'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - internal_network
+
+  caddy:
+    image: caddy:2.8.4-alpine
+    container_name: crypto_caddy
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+      dashboard:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - internal_network
 
 volumes:
   timescaledb_data:
   redis_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  internal_network:
+    driver: bridge

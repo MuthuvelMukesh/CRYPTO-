@@ -26,6 +26,7 @@ dependencies = [
     "pyjwt>=2.8.0",
     "cryptography>=43.0.0",
     "sse-starlette>=2.0.0",
+    "prometheus-client>=0.20.0",
     "polars>=1.9.0",
     "numpy>=2.0.0",
     "pandas>=2.2.0",
