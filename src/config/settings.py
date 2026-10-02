@@ -100,6 +100,12 @@ class Settings(BaseSettings):
     # Maximum age before the scanner ranking itself is flagged STALE
     SCANNER_STALE_THRESHOLD_SECONDS: int = 120
 
+    # ── Phase 3 Ingestion Hardening ──────────────────────────────────────────
+    WS_HEARTBEAT_TIMEOUT: int = 30
+    EXCHANGE_FAILOVER_COOLDOWN_SECONDS: int = 900  # 15 minutes
+    EXCHANGE_FALLBACK_ORDER: str = "binance,coinbase,kraken"
+    RATE_LIMIT_429_BACKOFF_SECONDS: int = 60
+
     # ── Paper Trading Defaults ────────────────────────────────────────────────
     PAPER_INITIAL_CAPITAL: float = 100_000.0
     MAKER_FEE_BPS: float = 2.0
@@ -157,6 +163,10 @@ class Settings(BaseSettings):
     @property
     def public_exchanges_list(self) -> list[str]:
         return [ex.strip() for ex in self.PUBLIC_EXCHANGES.split(",") if ex.strip()]
+
+    @property
+    def exchange_fallback_order_list(self) -> list[str]:
+        return [ex.strip() for ex in self.EXCHANGE_FALLBACK_ORDER.split(",") if ex.strip()]
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:

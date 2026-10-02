@@ -13,6 +13,7 @@ from src.config.exceptions import (
     ExternalProviderUnavailableError,
     PriceUnavailableError,
 )
+from src.ingestion.rate_limiter import ExchangeRateLimiter
 from src.utils.logging import get_logger
 
 logger = get_logger("ccxt_provider")
@@ -39,10 +40,20 @@ class CCXTProvider:
     Never returns synthetic candles or hard-coded price fallbacks.
     """
 
-    def __init__(self, exchange_id: str = "binance", timeout_ms: int = 10_000) -> None:
+    def __init__(
+        self,
+        exchange_id: str = "binance",
+        timeout_ms: int = 10_000,
+        rate_limiter: ExchangeRateLimiter | None = None,
+    ) -> None:
         self.exchange_id = exchange_id
         self.timeout_ms = timeout_ms
         self._exchange: Any | None = None
+        self.rate_limiter = rate_limiter or ExchangeRateLimiter(
+            exchange_id=exchange_id,
+            rate_limit_ms=100,
+            default_backoff_seconds=60.0,
+        )
 
     async def _get_exchange(self) -> Any:
         if self._exchange is None:
@@ -58,14 +69,21 @@ class CCXTProvider:
                 "timeout": self.timeout_ms,
                 "enableRateLimit": True,
             })
+            if hasattr(self._exchange, "rateLimit") and self._exchange.rateLimit:
+                self.rate_limiter.rate_limit_ms = int(self._exchange.rateLimit)
+                self.rate_limiter.fill_rate = 1000.0 / self.rate_limiter.rate_limit_ms
         return self._exchange
 
     async def fetch_markets(self, exchange: str | None = None) -> list[dict[str, Any]]:
         """Fetch and return all active spot markets from the exchange."""
+        await self.rate_limiter.acquire()
         ex = await self._get_exchange()
         try:
             raw_markets = await ex.load_markets(reload=True)
         except Exception as e:
+            err_str = str(e)
+            if "429" in err_str or "418" in err_str or "RateLimit" in type(e).__name__:
+                self.rate_limiter.record_429()
             raise ExternalProviderUnavailableError(
                 provider=self.exchange_id,
                 details=f"load_markets failed: {e}",
@@ -100,12 +118,22 @@ class CCXTProvider:
     ) -> list[dict[str, Any]]:
         """Fetch OHLCV candles.
 
-        Raises DataUnavailableError if no candles returned.
+        Raises DataUnavailableError if no candles returned or rate limit hit.
         """
+        await self.rate_limiter.acquire()
         ex = await self._get_exchange()
         try:
             raw = await ex.fetch_ohlcv(symbol, timeframe, since=since_ms, limit=limit)
         except Exception as e:
+            err_str = str(e)
+            if "429" in err_str or "418" in err_str or "RateLimit" in type(e).__name__:
+                self.rate_limiter.record_429()
+                raise DataUnavailableError(
+                    source=self.exchange_id,
+                    symbol=symbol,
+                    reason="RATE_LIMIT_429",
+                    details=f"Rate limit hit on {self.exchange_id}: {e}",
+                ) from e
             raise DataUnavailableError(
                 source=self.exchange_id,
                 symbol=symbol,
@@ -154,10 +182,14 @@ class CCXTProvider:
 
     async def fetch_ticker(self, symbol: str) -> dict[str, Any]:
         """Fetch current ticker — raises PriceUnavailableError on failure."""
+        await self.rate_limiter.acquire()
         ex = await self._get_exchange()
         try:
             t = await ex.fetch_ticker(symbol)
         except Exception as e:
+            err_str = str(e)
+            if "429" in err_str or "418" in err_str or "RateLimit" in type(e).__name__:
+                self.rate_limiter.record_429()
             raise PriceUnavailableError(
                 symbol=symbol,
                 source=self.exchange_id,
@@ -190,10 +222,14 @@ class CCXTProvider:
         self, symbol: str, depth: int = 20
     ) -> dict[str, Any]:
         """Fetch L2 orderbook snapshot."""
+        await self.rate_limiter.acquire()
         ex = await self._get_exchange()
         try:
             ob = await ex.fetch_order_book(symbol, limit=depth)
         except Exception as e:
+            err_str = str(e)
+            if "429" in err_str or "418" in err_str or "RateLimit" in type(e).__name__:
+                self.rate_limiter.record_429()
             raise DataUnavailableError(
                 source=self.exchange_id,
                 symbol=symbol,

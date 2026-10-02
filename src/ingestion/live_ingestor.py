@@ -1,16 +1,21 @@
-"""Live market data ingestion service — v2.0.
+"""Live market data ingestion service — v2.0 / v3.0.
 
-This module provides the real-time OHLCV ingestion loop using CCXT.
-It fetches candles for all tracked assets, validates them, and stores
-them with provenance metadata.
-
-Provenance chain:
-  CCXTProvider.fetch_ohlcv() → OHLCVValidator → OHLCV table → Feature pipeline
+Key v3.0 changes:
+- Ingestion safety check: aborts startup if LIVE_TRADING_ENABLED is True.
+- Multi-exchange fallback router (binance -> coinbase -> kraken) with auto-recovery.
+- Dynamic rate-limiting and backpressure handling.
+- Exponential backoff with uniform jitter (initial 1s, max 60s, factor 2, jitter +/-20%).
+- Heartbeat ping/pong monitoring flagging degraded connection on timeout.
+- Explicit data_mode persistence on all ingested OHLCV records.
 """
+
+from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config.constants import DataMode, Timeframe
@@ -21,19 +26,38 @@ from src.database.session import get_session_factory, init_db
 from src.features.pipeline import calculate_and_store_asset_features
 from src.ingestion.pipeline import DEFAULT_UNIVERSE
 from src.ingestion.providers.ccxt_provider import CCXTProvider
+from src.ingestion.resilience import (
+    ConnectionHealth,
+    ExchangeFallbackManager,
+    WebSocketHeartbeatMonitor,
+    calculate_backoff_with_jitter,
+)
 from src.scoring.engine import score_universe
 from src.utils.logging import get_logger
 from src.utils.time import to_utc_datetime
 from src.validation.ohlcv_validator import OHLCVValidator
 
+if TYPE_CHECKING:
+    from src.ingestion.providers.base import RawCandle
+
 logger = get_logger("live_ingestor")
 settings = get_settings()
+
+
+def validate_ingestion_safety() -> None:
+    """Abort ingestion if live real-money trading is somehow enabled."""
+    if settings.LIVE_TRADING_ENABLED:
+        raise RuntimeError(
+            "CRITICAL: LIVE_TRADING_ENABLED=True detected. "
+            "Ingestion is architecturally restricted to research and paper trading only. "
+            "Aborting startup."
+        )
 
 
 class LiveIngestionResult:
     """Summary of one ingestion cycle."""
 
-    def __init__(self) -> None:
+    def __init__(self, exchange: str | None = None) -> None:
         self.data_mode: DataMode = settings.DATA_MODE
         self.ingestion_started_at: datetime = datetime.now(UTC)
         self.ingestion_completed_at: datetime | None = None
@@ -42,7 +66,7 @@ class LiveIngestionResult:
         self.assets_failed: int = 0
         self.total_candles_stored: int = 0
         self.errors: list[dict] = []
-        self.exchange: str = settings.DEFAULT_EXCHANGE
+        self.exchange: str = exchange or settings.DEFAULT_EXCHANGE
 
     def complete(self) -> None:
         self.ingestion_completed_at = datetime.now(UTC)
@@ -62,14 +86,12 @@ async def ingest_candles_for_asset(
     market_id: str,
     timeframe: Timeframe = Timeframe.H1,
     limit: int = 200,
+    data_mode: str = "LIVE",
 ) -> int:
     """Fetch, validate, and store OHLCV candles for a single asset.
 
     Raises DataUnavailableError if exchange cannot supply data.
     Never generates or returns synthetic candles.
-
-    Returns:
-        Number of candles stored.
     """
     raw_candles = await provider.fetch_ohlcv(
         symbol=market_symbol,
@@ -77,11 +99,9 @@ async def ingest_candles_for_asset(
         limit=limit,
     )
 
-    # raw_candles is list of {time_ms, open, high, low, close, volume}
-    # Convert to the format OHLCVValidator expects
     from src.ingestion.providers.base import RawCandle as RawOHLCV
 
-    ohlcv_inputs = [
+    ohlcv_inputs: list[RawCandle] = [
         RawOHLCV(
             timestamp_ms=c["time_ms"],
             open=c["open"],
@@ -103,7 +123,6 @@ async def ingest_candles_for_asset(
     for c in cleaned:
         candle_dt = to_utc_datetime(c.timestamp_ms)
 
-        from sqlalchemy import select
         existing_res = await session.execute(
             select(OHLCV).where(
                 OHLCV.market_id == market_id,
@@ -119,18 +138,22 @@ async def ingest_candles_for_asset(
             existing.close = c.close
             existing.volume = c.volume
             existing.validation_status = c.validation_status.value
+            existing.data_mode = data_mode
         else:
-            session.add(OHLCV(
-                time=candle_dt,
-                market_id=market_id,
-                timeframe=timeframe.value,
-                open=c.open,
-                high=c.high,
-                low=c.low,
-                close=c.close,
-                volume=c.volume,
-                validation_status=c.validation_status.value,
-            ))
+            session.add(
+                OHLCV(
+                    time=candle_dt,
+                    market_id=market_id,
+                    timeframe=timeframe.value,
+                    open=c.open,
+                    high=c.high,
+                    low=c.low,
+                    close=c.close,
+                    volume=c.volume,
+                    validation_status=c.validation_status.value,
+                    data_mode=data_mode,
+                )
+            )
         saved_count += 1
 
     await session.commit()
@@ -144,35 +167,33 @@ async def run_ingestion_cycle(
     exchange_id: str | None = None,
     limit: int = 200,
     _provider: CCXTProvider | None = None,
+    fallback_manager: ExchangeFallbackManager | None = None,
 ) -> LiveIngestionResult:
-    """Run one complete ingestion cycle for the tracked universe.
+    """Run one complete ingestion cycle for the tracked universe with multi-exchange fallback."""
+    validate_ingestion_safety()
 
-    Args:
-        _provider: optional pre-existing CCXTProvider to reuse (for continuous mode).
-                   If None, a new provider is created and closed after the cycle.
-    """
-    result = LiveIngestionResult()
-    exchange = exchange_id or settings.DEFAULT_EXCHANGE
-    result.exchange = exchange
+    f_mgr = fallback_manager or ExchangeFallbackManager(settings=settings)
+    active_exchange = exchange_id or f_mgr.active_exchange
+
+    result = LiveIngestionResult(exchange=active_exchange)
 
     logger.info(
         "ingestion_cycle_started",
-        exchange=exchange,
+        exchange=active_exchange,
         timeframe=timeframe.value,
         assets=len(DEFAULT_UNIVERSE),
         data_mode=result.data_mode,
     )
 
-    # Use injected provider or create a temporary one
     owns_provider = _provider is None
-    provider = _provider if _provider is not None else CCXTProvider(exchange_id=exchange)
+    provider = _provider if _provider is not None else CCXTProvider(exchange_id=active_exchange)
     factory = get_session_factory()
 
     try:
         for item in DEFAULT_UNIVERSE:
             asset_id = item["id"]
-            market_symbol = item["market"]  # e.g. "BTC/USDT"
-            market_id = f"{exchange}:{market_symbol}"
+            market_symbol = item["market"]
+            market_id = f"{provider.exchange_id}:{market_symbol}"
             result.assets_attempted += 1
 
             try:
@@ -185,9 +206,11 @@ async def run_ingestion_cycle(
                         market_id=market_id,
                         timeframe=timeframe,
                         limit=limit,
+                        data_mode=settings.DATA_MODE.value,
                     )
                 result.total_candles_stored += count
                 result.assets_succeeded += 1
+                f_mgr.record_success(provider.exchange_id)
                 logger.info("asset_ingested", asset=asset_id, candles=count)
 
             except DataUnavailableError as e:
@@ -203,12 +226,41 @@ async def run_ingestion_cycle(
                     reason=e.reason,
                     details=str(e),
                 )
+                # Check for rate-limit 429 or failure trigger
+                is_429 = "429" in str(e) or e.reason == "RATE_LIMIT_429"
+                async with factory() as session:
+                    new_ex = await f_mgr.record_failure(
+                        session=session,
+                        exchange=provider.exchange_id,
+                        reason=e.reason,
+                        details=str(e),
+                        is_429=is_429,
+                    )
+                if new_ex != provider.exchange_id:
+                    logger.warning("switching_active_provider_after_failover", old=provider.exchange_id, new=new_ex)
+                    if owns_provider:
+                        await provider.close()
+                    provider = CCXTProvider(exchange_id=new_ex)
+                    result.exchange = new_ex
+
             except Exception as e:
                 result.assets_failed += 1
                 result.errors.append({"asset": asset_id, "reason": "UNEXPECTED_ERROR", "details": str(e)})
                 logger.error("asset_ingestion_unexpected_error", asset=asset_id, error=str(e))
+                async with factory() as session:
+                    new_ex = await f_mgr.record_failure(
+                        session=session,
+                        exchange=provider.exchange_id,
+                        reason="UNEXPECTED_ERROR",
+                        details=str(e),
+                    )
+                if new_ex != provider.exchange_id:
+                    if owns_provider:
+                        await provider.close()
+                    provider = CCXTProvider(exchange_id=new_ex)
+                    result.exchange = new_ex
 
-        # Compute features and scores for all assets
+        # Compute features and scores
         if compute_features and result.assets_succeeded > 0:
             async with factory() as session:
                 for item in DEFAULT_UNIVERSE:
@@ -242,50 +294,81 @@ async def run_ingestion_cycle(
 async def run_continuous_ingestion(
     interval_seconds: int = 300,
     timeframe: Timeframe = Timeframe.H1,
+    fallback_manager: ExchangeFallbackManager | None = None,
+    heartbeat_monitor: WebSocketHeartbeatMonitor | None = None,
+    max_cycles: int | None = None,
 ) -> None:
-    """Run the ingestion loop indefinitely with a single long-lived provider.
-
-    The CCXTProvider is created once and kept open for the lifetime of the
-    process. Each cycle shares the same authenticated exchange session,
-    avoiding the overhead and errors of reconnecting per cycle.
-    """
+    """Run continuous ingestion loop with exponential backoff + jitter and heartbeat monitoring."""
+    validate_ingestion_safety()
     await init_db()
-    exchange = settings.DEFAULT_EXCHANGE
-    provider = CCXTProvider(exchange_id=exchange)
+
+    f_mgr = fallback_manager or ExchangeFallbackManager(settings=settings)
+    hb_monitor = heartbeat_monitor or WebSocketHeartbeatMonitor(
+        timeout_seconds=float(settings.WS_HEARTBEAT_TIMEOUT)
+    )
+
+    consecutive_errors = 0
+    cycles_completed = 0
 
     logger.info(
         "continuous_ingestion_started",
         interval_seconds=interval_seconds,
-        exchange=exchange,
+        primary_exchange=f_mgr.primary_exchange,
     )
 
-    try:
-        while True:
-            try:
-                result = await run_ingestion_cycle(
-                    timeframe=timeframe,
-                    compute_features=True,
-                    compute_scores=True,
-                    _provider=provider,  # reuse existing connection
-                )
-                logger.info(
-                    "ingestion_cycle_summary",
-                    succeeded=result.assets_succeeded,
-                    failed=result.assets_failed,
-                    candles=result.total_candles_stored,
-                    duration=result.duration_seconds,
-                )
-            except Exception as e:
-                logger.error("ingestion_cycle_fatal_error", error=str(e))
+    factory = get_session_factory()
 
-            logger.info("ingestion_sleeping", seconds=interval_seconds)
+    while max_cycles is None or cycles_completed < max_cycles:
+        # Check auto-recovery to primary
+        async with factory() as session:
+            await f_mgr.check_auto_recovery(session)
+
+        curr_exchange = f_mgr.active_exchange
+        provider = CCXTProvider(exchange_id=curr_exchange)
+
+        try:
+            result = await run_ingestion_cycle(
+                timeframe=timeframe,
+                compute_features=True,
+                compute_scores=True,
+                exchange_id=curr_exchange,
+                _provider=provider,
+                fallback_manager=f_mgr,
+            )
+
+            hb_monitor.record_message()
+            consecutive_errors = 0
+            cycles_completed += 1
+
+            health = hb_monitor.check_health()
+            if health == ConnectionHealth.DEGRADED:
+                logger.warning("ingestion_connection_degraded", exchange=curr_exchange)
+
+            logger.info("ingestion_cycle_success", exchange=result.exchange, candles=result.total_candles_stored)
             await asyncio.sleep(interval_seconds)
-    finally:
-        await provider.close()
-        logger.info("continuous_ingestion_stopped")
+
+        except Exception as e:
+            consecutive_errors += 1
+            health = hb_monitor.check_health()
+            backoff_delay = calculate_backoff_with_jitter(
+                attempt=consecutive_errors,
+                initial=1.0,
+                max_backoff=60.0,
+                factor=2.0,
+                jitter_pct=0.20,
+            )
+            logger.error(
+                "ingestion_cycle_error",
+                error=str(e),
+                attempt=consecutive_errors,
+                backoff_seconds=round(backoff_delay, 2),
+                health=health.value,
+            )
+            await asyncio.sleep(backoff_delay)
+
+        finally:
+            await provider.close()
 
 
 if __name__ == "__main__":
-    """Entry point for running the ingestion worker standalone."""
     asyncio.run(run_continuous_ingestion())
-

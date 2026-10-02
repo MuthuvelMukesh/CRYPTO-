@@ -1,8 +1,9 @@
 """Market data time-series models for OHLCV, orderbook, derivatives, on-chain, and tokenomics."""
 
+import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database.models.base import Base
@@ -25,10 +26,25 @@ class OHLCV(Base):
     volume: Mapped[float] = mapped_column(Float, nullable=False)
     quote_volume: Mapped[float | None] = mapped_column(Float, nullable=True)
     validation_status: Mapped[str] = mapped_column(String(16), default="GOOD")
+    data_mode: Mapped[str] = mapped_column(String(24), nullable=False, default="LIVE")
 
     __table_args__ = (
         Index("idx_ohlcv_query", "market_id", "timeframe", "time"),
     )
+
+
+class ExchangeFailover(Base):
+    """Log of multi-exchange failover events — v3.0."""
+
+    __tablename__ = "exchange_failovers"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    from_exchange: Mapped[str] = mapped_column(String(32), nullable=False)
+    to_exchange: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason: Mapped[str] = mapped_column(String(64), nullable=False)  # RATE_LIMIT_429, CONSECUTIVE_FAILURES, etc.
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+
 
 
 class Trade(Base):
