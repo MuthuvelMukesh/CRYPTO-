@@ -1,7 +1,11 @@
-"""Risk management engine enforcing position caps, meme quotas, and circuit breakers."""
+from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from src.config.constants import AssetClass
 from src.paper.models import PaperOrderSide, RiskValidationResult
+
+if TYPE_CHECKING:
+    from src.config.settings import Settings
 
 
 class RiskEngine:
@@ -15,24 +19,42 @@ class RiskEngine:
         max_open_positions: int = 15,
         max_drawdown_limit_pct: float = 20.0,
     ) -> None:
-        self.max_single_position_pct = max_single_position_pct
-        self.max_meme_exposure_pct = max_meme_exposure_pct
-        self.cash_buffer_pct = cash_buffer_pct
-        self.max_open_positions = max_open_positions
-        self.max_drawdown_limit_pct = max_drawdown_limit_pct
+        self.max_single_position_pct = float(max_single_position_pct)
+        self.max_meme_exposure_pct = float(max_meme_exposure_pct)
+        self.cash_buffer_pct = float(cash_buffer_pct)
+        self.max_open_positions = int(max_open_positions)
+        self.max_drawdown_limit_pct = float(max_drawdown_limit_pct)
+
+    @classmethod
+    def from_settings(cls, settings: "Settings | None" = None) -> "RiskEngine":
+        """Instantiate RiskEngine using configured limits from Settings."""
+        from src.config.settings import get_settings
+        cfg = settings or get_settings()
+        return cls(
+            max_single_position_pct=float(cfg.MAX_SINGLE_POSITION_PCT),
+            max_meme_exposure_pct=float(cfg.MAX_MEME_EXPOSURE_PCT),
+            cash_buffer_pct=2.0,
+            max_open_positions=int(cfg.MAX_OPEN_POSITIONS),
+            max_drawdown_limit_pct=float(cfg.MAX_DRAWDOWN_LIMIT_PCT),
+        )
 
     def validate_order(
         self,
         side: PaperOrderSide,
         asset_symbol: str,
         asset_class: str,
-        order_value_usd: float,
-        cash_balance: float,
-        total_equity: float,
+        order_value_usd: float | Decimal,
+        cash_balance: float | Decimal,
+        total_equity: float | Decimal,
         open_positions: list[dict],  # [{'symbol': str, 'asset_class': str, 'market_value': float}]
-        current_drawdown_pct: float = 0.0,
+        current_drawdown_pct: float | Decimal = 0.0,
     ) -> RiskValidationResult:
         """Inspect and enforce risk boundaries prior to order routing."""
+        order_value_usd = float(order_value_usd)
+        cash_balance = float(cash_balance)
+        total_equity = float(total_equity)
+        current_drawdown_pct = float(current_drawdown_pct)
+
         # 1. SELL orders always bypass buy risk restrictions (always allow de-risking)
         if side == PaperOrderSide.SELL:
             # Check asset is actually held
@@ -81,6 +103,7 @@ class RiskEngine:
 
         if new_total_val > max_allowed_single:
             violations.append("SINGLE_POSITION_LIMIT_EXCEEDED")
+            violations.append("MAX_POSITION_SIZE_EXCEEDED")
             return RiskValidationResult(
                 passed=False,
                 reason=(

@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.deps import get_db
-from src.config.exceptions import CryptoIntelligenceError
+from src.config.exceptions import CryptoIntelligenceError, DuplicateOrderError
 from src.paper.broker import PaperBroker
 from src.paper.models import (
     OrderResponse,
@@ -13,6 +13,7 @@ from src.paper.models import (
     PortfolioSummaryResponse,
     PositionResponse,
 )
+from src.paper.reconciliation import ReconciliationResult, reconcile_account_ledger
 
 router = APIRouter(prefix="/api/v1/paper", tags=["Paper Trading"])
 broker = PaperBroker()
@@ -23,6 +24,15 @@ class ResetAccountRequest(BaseModel):
 
     account_id: str = Field(default="default_paper")
     starting_balance: float = Field(default=100000.0, ge=1000.0)
+
+
+@router.get("/reconcile", response_model=ReconciliationResult, summary="Reconcile paper account against ledger")
+async def reconcile_paper_account(
+    account_id: str = Query("default_paper", description="Virtual account identifier"),
+    db: AsyncSession = Depends(get_db),
+) -> ReconciliationResult:
+    """Audit account state by replaying all immutable ledger events from inception."""
+    return await reconcile_account_ledger(db, account_id=account_id)
 
 
 @router.get("/account", response_model=PortfolioSummaryResponse, summary="Get paper trading account summary")
@@ -52,6 +62,8 @@ async def place_paper_order(
     """Submit a paper market or limit order with automated risk controls and micro-structure slippage."""
     try:
         return await broker.submit_order(db, req)
+    except DuplicateOrderError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
     except (ValueError, CryptoIntelligenceError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 

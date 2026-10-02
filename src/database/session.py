@@ -91,6 +91,9 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+get_db_session = get_db
+
+
 async def check_db_health() -> dict[str, object]:
     """Execute a test query to verify database connectivity and measure latency."""
     engine = get_engine()
