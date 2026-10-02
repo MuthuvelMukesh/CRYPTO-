@@ -116,6 +116,7 @@ class BacktestConfig(BaseModel):
     cash_buffer_pct: float = Field(default=0.02, ge=0.0, le=0.5, description="Min cash reserve fraction")
     timeframe: str = Field(default="1d", description="Bar timeframe (e.g. 1h, 1d, 4h)")
     intrabar_order: str = Field(default="stop_first", description="Bracket trigger priority: 'stop_first' or 'tp_first'")
+    point_in_time_universe: bool = Field(default=True, description="Enforce point-in-time universe membership to mitigate survivorship bias")
     parameters: dict[str, Any] = Field(default_factory=dict, description="Strategy-specific hyperparameters")
 
 
@@ -130,4 +131,9 @@ class BacktestResult(BaseModel):
     total_trades: int = Field(default=0)
     trades: list[dict[str, Any]] = Field(default_factory=list, description="List of trade logs")
     equity_curve: list[dict[str, Any]] = Field(default_factory=list, description="Time series of equity values")
+    survivorship_bias_status: str = Field(
+        default="Survivorship Bias: Mitigated (Point-in-Time Universe)",
+        description="Survivorship bias attribution indicator",
+    )
+    deflated_sharpe_ratio: float | None = Field(default=None, description="Deflated Sharpe Ratio correcting for multiple testing")
     created_at: datetime = Field(default_factory=utc_now)

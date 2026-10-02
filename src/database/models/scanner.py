@@ -92,6 +92,7 @@ class UniverseSnapshot(Base):
     asset_class: Mapped[str] = mapped_column(String(24), nullable=False)
     primary_sector: Mapped[str | None] = mapped_column(String(64), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    delisted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Inclusion criteria at snapshot time
     volume_24h_usd: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -202,9 +202,24 @@ def walk_forward_train_evaluate(
     train_pct: float = 0.70,
     embargo_bars: int = 24,
     model_type: str = "logistic_regression",
+    scaler_type: str | None = None,
 ) -> ModelEvaluationReport:
-    """Split dataset temporally with an embargo barrier, train model, and evaluate out-of-sample metrics."""
+    """Split dataset temporally with an embargo barrier, train model, and evaluate out-of-sample metrics.
+
+    Enforces research integrity:
+    1. Asserts target variables are NOT in feature matrix.
+    2. Scalers are fit strictly on in-sample data and applied to out-of-sample data.
+    """
     _require_sklearn()
+
+    # Research integrity audit: target must never leak into features
+    assert target_return_col not in feature_cols, (
+        f"DATA LEAKAGE DETECTED: Target return column '{target_return_col}' found in feature matrix!"
+    )
+    assert target_binary_col not in feature_cols, (
+        f"DATA LEAKAGE DETECTED: Target binary column '{target_binary_col}' found in feature matrix!"
+    )
+
     n = len(df)
     train_end = int(n * train_pct)
     test_start = train_end + embargo_bars
@@ -215,12 +230,28 @@ def walk_forward_train_evaluate(
     train_df = df.iloc[:train_end]
     test_df = df.iloc[test_start:]
 
-    X_train = train_df[feature_cols]
+    X_train = train_df[feature_cols].copy()
     y_train = train_df[target_binary_col]
 
-    X_test = test_df[feature_cols]
+    X_test = test_df[feature_cols].copy()
     y_test = test_df[target_binary_col]
     actual_returns_test = test_df[target_return_col]
+
+    # In-sample scaler separation
+    if scaler_type == "standard":
+        from sklearn.preprocessing import StandardScaler
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
+        X_train = pd.DataFrame(X_train_scaled, columns=feature_cols, index=train_df.index)
+        X_test = pd.DataFrame(X_test_scaled, columns=feature_cols, index=test_df.index)
+    elif scaler_type == "minmax":
+        from sklearn.preprocessing import MinMaxScaler
+        scaler = MinMaxScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
+        X_train = pd.DataFrame(X_train_scaled, columns=feature_cols, index=train_df.index)
+        X_test = pd.DataFrame(X_test_scaled, columns=feature_cols, index=test_df.index)
 
     # Fit model
     model = QuantitativeMLModel(model_type=model_type)

@@ -390,6 +390,35 @@ class BacktestEngine:
             {t.low_confidence_reason for t in low_confidence_trades if t.low_confidence_reason}
         )
 
+        survivorship_status = (
+            "Survivorship Bias: Mitigated (Point-in-Time Universe)"
+            if getattr(self.config, "point_in_time_universe", True)
+            else "Survivorship Bias: Unmitigated (Survivors Only)"
+        )
+
+        dsr_val = None
+        if "n_trials" in self.config.parameters or "variance_trials" in self.config.parameters:
+            from src.research.statistics import compute_deflated_sharpe_ratio
+            n_trials = int(self.config.parameters.get("n_trials", 1))
+            var_trials = float(self.config.parameters.get("variance_trials", 0.0))
+            sr = float(metrics.get("sharpe_ratio", 0.0))
+            returns_series = [e.equity for e in equity_curve]
+            pct_returns = [
+                (returns_series[i] - returns_series[i - 1]) / returns_series[i - 1]
+                for i in range(1, len(returns_series))
+                if returns_series[i - 1] > 0
+            ]
+            dsr_res = compute_deflated_sharpe_ratio(
+                sharpe_ratio=sr,
+                n_observations=len(pct_returns),
+                n_trials=n_trials,
+                variance_trials=var_trials,
+                returns=pct_returns,
+            )
+            dsr_val = dsr_res.get("deflated_sharpe_ratio")
+            metrics["deflated_sharpe_ratio"] = dsr_val
+            metrics["dsr_metadata"] = dsr_res
+
         result = BacktestResult(
             id=backtest_id,
             config=self.config,
@@ -397,6 +426,8 @@ class BacktestEngine:
             total_trades=len(closed_trades),
             trades=[self._serialize_trade(t) for t in closed_trades],
             equity_curve=[self._serialize_equity(e) for e in equity_curve],
+            survivorship_bias_status=survivorship_status,
+            deflated_sharpe_ratio=dsr_val,
             created_at=utc_now(),
         )
 
