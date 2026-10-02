@@ -58,7 +58,31 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
 
 @pytest.fixture
 async def client(test_engine, test_settings: Settings) -> AsyncGenerator[AsyncClient, None]:
-    """Yield async HTTP client connected to FastAPI app with test DB override."""
+    """Yield authenticated async HTTP client connected to FastAPI app with test DB override."""
+    app = create_app()
+
+    session_factory = async_sessionmaker(
+        test_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+
+    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_settings] = lambda: test_settings
+
+    headers = {"X-API-Key": "dev-api-key-researcher-1"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as ac:
+        yield ac
+
+
+@pytest.fixture
+async def unauthenticated_client(test_engine, test_settings: Settings) -> AsyncGenerator[AsyncClient, None]:
+    """Yield unauthenticated async HTTP client connected to FastAPI app with test DB override."""
     app = create_app()
 
     session_factory = async_sessionmaker(

@@ -1,0 +1,5260 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Crypto Intelligence Platform",
+    "description": "Cryptocurrency Market Intelligence & Quantitative Workstation v3.0. Factor Scanner, Robust Backtesting, Real-time Streaming, and Paper Trading. Non-custodial research platform. No live execution.",
+    "version": "2.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "Health & Diagnostics"
+        ],
+        "summary": "Comprehensive system health check \u2014 v2.0",
+        "description": "Return health status of core services with v2.0 data mode and trading guard state.",
+        "operationId": "get_health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/versions": {
+      "get": {
+        "tags": [
+          "Health & Diagnostics"
+        ],
+        "summary": "Component version matrix \u2014 v2.0",
+        "description": "Return all component version strings for reproducibility auditing.",
+        "operationId": "get_versions_health_versions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Get Versions Health Versions Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/market-data": {
+      "get": {
+        "tags": [
+          "Health & Diagnostics"
+        ],
+        "summary": "Per-asset market data freshness status \u2014 v2.0",
+        "description": "Return how stale each tracked asset's latest candle is.",
+        "operationId": "get_market_data_freshness_health_market_data_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Get Market Data Freshness Health Market Data Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": [
+          "Health & Diagnostics"
+        ],
+        "summary": "Kubernetes Readiness Probe",
+        "description": "Readiness probe indicating if the service can receive user traffic.",
+        "operationId": "readiness_probe_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/live": {
+      "get": {
+        "tags": [
+          "Health & Diagnostics"
+        ],
+        "summary": "Kubernetes Liveness Probe",
+        "description": "Liveness probe indicating if the service process is active.",
+        "operationId": "liveness_probe_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/token": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Exchange API key for a JWT access token",
+        "description": "Issue a signed JWT access token if the provided API key is valid.",
+        "operationId": "exchange_token_api_v1_auth_token_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Inspect current authenticated identity",
+        "description": "Return the caller's validated authentication identity and scopes.",
+        "operationId": "get_me_api_v1_auth_me_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthIdentity"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/csrf": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Obtain CSRF token for browser session",
+        "description": "Generate a random CSRF token to be included in mutating requests from browser clients.",
+        "operationId": "get_csrf_token_api_v1_auth_csrf_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsrfResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scanner/rankings": {
+      "get": {
+        "tags": [
+          "Live Scanner"
+        ],
+        "summary": "Get scanner rankings via single-query aggregation with pagination & filtering",
+        "description": "Retrieve scanner rankings using a single unified query with window functions.\n\nGuarantees O(1) constant database queries regardless of universe size,\neliminating N+1 query performance degradation.",
+        "operationId": "get_scanner_rankings_api_v1_scanner_rankings_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "sector",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by primary sector (e.g. L1, DeFi)",
+              "title": "Sector"
+            },
+            "description": "Filter by primary sector (e.g. L1, DeFi)"
+          },
+          {
+            "name": "asset_class",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by asset class (e.g. CORE, ALTCOIN)",
+              "title": "Asset Class"
+            },
+            "description": "Filter by asset class (e.g. CORE, ALTCOIN)"
+          },
+          {
+            "name": "min_score",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum opportunity score filter",
+              "title": "Min Score"
+            },
+            "description": "Minimum opportunity score filter"
+          },
+          {
+            "name": "data_fresh_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Filter only assets with fresh market data",
+              "default": false,
+              "title": "Data Fresh Only"
+            },
+            "description": "Filter only assets with fresh market data"
+          },
+          {
+            "name": "sort_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Sort field: opportunity_score, price, return_1d, return_7d, return_30d, symbol",
+              "default": "opportunity_score",
+              "title": "Sort By"
+            },
+            "description": "Sort field: opportunity_score, price, return_1d, return_7d, return_30d, symbol"
+          },
+          {
+            "name": "sort_order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string",
+              "description": "Sort direction",
+              "default": "desc",
+              "title": "Sort Order"
+            },
+            "description": "Sort direction"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScannerRankingsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scanner/status": {
+      "get": {
+        "tags": [
+          "Live Scanner"
+        ],
+        "summary": "Scanner operational status and data freshness summary",
+        "description": "Return scanner data mode, freshness, and operational state.",
+        "operationId": "get_scanner_status_api_v1_scanner_status_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Get Scanner Status Api V1 Scanner Status Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scanner/snapshots": {
+      "get": {
+        "tags": [
+          "Live Scanner"
+        ],
+        "summary": "Historical scanner snapshot records with pagination & filtering",
+        "description": "Return paginated historical scanner snapshot rows.",
+        "operationId": "get_scanner_snapshots_api_v1_scanner_snapshots_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Get Scanner Snapshots Api V1 Scanner Snapshots Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assets": {
+      "get": {
+        "tags": [
+          "Assets & Market Data"
+        ],
+        "summary": "List all monitored cryptocurrency assets",
+        "description": "Retrieve catalog of cryptocurrency assets registered in platform universe.",
+        "operationId": "list_assets_api_v1_assets_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "asset_class",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AssetClass"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by asset class (CORE, ALTCOIN, MEME)",
+              "title": "Asset Class"
+            },
+            "description": "Filter by asset class (CORE, ALTCOIN, MEME)"
+          },
+          {
+            "name": "sector",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by primary sector",
+              "title": "Sector"
+            },
+            "description": "Filter by primary sector"
+          },
+          {
+            "name": "is_active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Filter active assets",
+              "default": true,
+              "title": "Is Active"
+            },
+            "description": "Filter active assets"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AssetResponse"
+                  },
+                  "title": "Response List Assets Api V1 Assets Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assets/{symbol}": {
+      "get": {
+        "tags": [
+          "Assets & Market Data"
+        ],
+        "summary": "Get asset detail by symbol",
+        "description": "Retrieve asset detail and active markets for a single symbol.",
+        "operationId": "get_asset_api_v1_assets__symbol__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ohlcv/{symbol}": {
+      "get": {
+        "tags": [
+          "Assets & Market Data"
+        ],
+        "summary": "Query historical OHLCV candlesticks",
+        "description": "Fetch stored historical candlesticks for asset pair.",
+        "operationId": "get_ohlcv_api_v1_ohlcv__symbol__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Timeframe",
+              "description": "Candlestick timeframe",
+              "default": "1h"
+            },
+            "description": "Candlestick timeframe"
+          },
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Exchange identifier",
+              "default": "binance",
+              "title": "Exchange"
+            },
+            "description": "Exchange identifier"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CandleResponse"
+                  },
+                  "title": "Response Get Ohlcv Api V1 Ohlcv  Symbol  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scores": {
+      "get": {
+        "tags": [
+          "Scoring & Scanner"
+        ],
+        "summary": "Get ranked scores for all assets",
+        "description": "Retrieve latest explainable scores ranked by Opportunity Score.",
+        "operationId": "list_scores_api_v1_scores_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "asset_class",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AssetClass"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by asset class",
+              "title": "Asset Class"
+            },
+            "description": "Filter by asset class"
+          },
+          {
+            "name": "min_opportunity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "description": "Minimum opportunity score",
+              "default": 0.0,
+              "title": "Min Opportunity"
+            },
+            "description": "Minimum opportunity score"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScoreSummaryResponse"
+                  },
+                  "title": "Response List Scores Api V1 Scores Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scores/{symbol}": {
+      "get": {
+        "tags": [
+          "Scoring & Scanner"
+        ],
+        "summary": "Get full score explainability card",
+        "description": "Retrieve full factor breakdown and penalty itemization for a single asset.",
+        "operationId": "get_score_detail_api_v1_scores__symbol__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scores/calculate": {
+      "post": {
+        "tags": [
+          "Scoring & Scanner"
+        ],
+        "summary": "Compute scores for entire active universe",
+        "description": "Trigger scoring calculation across all active assets.",
+        "operationId": "trigger_scoring_api_v1_scores_calculate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Timeframe",
+              "description": "Candlestick timeframe",
+              "default": "1h"
+            },
+            "description": "Candlestick timeframe"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scanner": {
+      "get": {
+        "tags": [
+          "Scoring & Scanner"
+        ],
+        "summary": "Market Scanner Filter",
+        "description": "Multi-parameter quantitative scanner.",
+        "operationId": "scanner_api_v1_scanner_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "asset_class",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AssetClass"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by class",
+              "title": "Asset Class"
+            },
+            "description": "Filter by class"
+          },
+          {
+            "name": "sector",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by sector",
+              "title": "Sector"
+            },
+            "description": "Filter by sector"
+          },
+          {
+            "name": "min_opportunity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "description": "Minimum opportunity threshold",
+              "default": 60.0,
+              "title": "Min Opportunity"
+            },
+            "description": "Minimum opportunity threshold"
+          },
+          {
+            "name": "max_risk_score",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter max risk",
+              "title": "Max Risk Score"
+            },
+            "description": "Filter max risk"
+          },
+          {
+            "name": "exclude_flags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Exclude assets with active risk flags",
+              "default": false,
+              "title": "Exclude Flags"
+            },
+            "description": "Exclude assets with active risk flags"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScoreSummaryResponse"
+                  },
+                  "title": "Response Scanner Api V1 Scanner Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtests/strategies": {
+      "get": {
+        "tags": [
+          "Backtesting"
+        ],
+        "summary": "List available trading strategies",
+        "description": "Retrieve metadata for all registered quantitative trading strategies.",
+        "operationId": "list_strategies_api_v1_backtests_strategies_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StrategyInfoResponse"
+                  },
+                  "title": "Response List Strategies Api V1 Backtests Strategies Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtests": {
+      "post": {
+        "tags": [
+          "Backtesting"
+        ],
+        "summary": "Submit async backtest job",
+        "description": "Submit a backtesting job for background asynchronous execution.",
+        "operationId": "submit_backtest_job_api_v1_backtests_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunBacktestRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobCreatedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Backtesting"
+        ],
+        "summary": "List historical backtest runs",
+        "description": "Retrieve history of saved backtests ordered by creation date descending with pagination.",
+        "operationId": "list_backtests_api_v1_backtests_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BacktestSummaryResponse"
+                  },
+                  "title": "Response List Backtests Api V1 Backtests Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtests/run": {
+      "post": {
+        "tags": [
+          "Backtesting"
+        ],
+        "summary": "Execute a backtest simulation synchronously",
+        "description": "Execute a backtesting simulation synchronously and persist the results.",
+        "operationId": "run_backtest_sync_api_v1_backtests_run_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunBacktestRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtests/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "Backtesting"
+        ],
+        "summary": "Check status and progress of an async backtest job",
+        "description": "Poll the status, progress (0.0 - 1.0), and results of a backtest job.",
+        "operationId": "get_job_status_api_v1_backtests_jobs__job_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Get Job Status Api V1 Backtests Jobs  Job Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtests/jobs/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "Backtesting"
+        ],
+        "summary": "Cancel a running backtest job",
+        "description": "Abort an in-progress or queued backtest simulation.",
+        "operationId": "cancel_job_api_v1_backtests_jobs__job_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Cancel Job Api V1 Backtests Jobs  Job Id  Cancel Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtests/compare": {
+      "get": {
+        "tags": [
+          "Backtesting"
+        ],
+        "summary": "Compare multiple historical backtest runs side-by-side",
+        "description": "Retrieve side-by-side metric comparison for multiple completed backtests.",
+        "operationId": "compare_backtests_api_v1_backtests_compare_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated backtest run IDs",
+              "title": "Ids"
+            },
+            "description": "Comma-separated backtest run IDs"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Compare Backtests Api V1 Backtests Compare Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtests/{backtest_id}": {
+      "get": {
+        "tags": [
+          "Backtesting"
+        ],
+        "summary": "Get full backtest results",
+        "description": "Retrieve comprehensive backtest run results with trade logs.",
+        "operationId": "get_backtest_api_v1_backtests__backtest_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "backtest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Backtest Id"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/paper/reconcile": {
+      "get": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "Reconcile paper account against ledger",
+        "description": "Audit account state by replaying all immutable ledger events from inception.",
+        "operationId": "reconcile_paper_account_api_v1_paper_reconcile_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Virtual account identifier",
+              "default": "default_paper",
+              "title": "Account Id"
+            },
+            "description": "Virtual account identifier"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/paper/account": {
+      "get": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "Get paper trading account summary",
+        "description": "Retrieve comprehensive marked-to-market portfolio summary and risk statistics.",
+        "operationId": "get_paper_account_api_v1_paper_account_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Virtual account identifier",
+              "default": "default_paper",
+              "title": "Account Id"
+            },
+            "description": "Virtual account identifier"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioSummaryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/paper/positions": {
+      "get": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "Get open paper positions",
+        "description": "Retrieve open positions with real-time mark-to-market valuations.",
+        "operationId": "get_paper_positions_api_v1_paper_positions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Virtual account identifier",
+              "default": "default_paper",
+              "title": "Account Id"
+            },
+            "description": "Virtual account identifier"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PositionResponse"
+                  },
+                  "title": "Response Get Paper Positions Api V1 Paper Positions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/paper/orders": {
+      "get": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "Get paginated history of paper trading orders",
+        "description": "Retrieve paginated paper orders.",
+        "operationId": "list_paper_orders_api_v1_paper_orders_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Virtual account identifier",
+              "default": "default_paper",
+              "title": "Account Id"
+            },
+            "description": "Virtual account identifier"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by status (e.g. FILLED, PENDING)",
+              "title": "Status"
+            },
+            "description": "Filter by status (e.g. FILLED, PENDING)"
+          },
+          {
+            "name": "asset_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by asset symbol/id",
+              "title": "Asset Id"
+            },
+            "description": "Filter by asset symbol/id"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response List Paper Orders Api V1 Paper Orders Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "Place a paper trading order",
+        "description": "Submit a paper market or limit order with automated risk controls and micro-structure slippage.",
+        "operationId": "place_paper_order_api_v1_paper_orders_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderSubmitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/paper/fills": {
+      "get": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "Get paginated history of paper execution fills",
+        "description": "Retrieve paginated paper execution fills.",
+        "operationId": "list_paper_fills_api_v1_paper_fills_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Virtual account identifier",
+              "default": "default_paper",
+              "title": "Account Id"
+            },
+            "description": "Virtual account identifier"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response List Paper Fills Api V1 Paper Fills Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/paper/ledger": {
+      "get": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "Get paginated immutable ledger audit events",
+        "description": "Retrieve immutable ledger event stream with server-side pagination.",
+        "operationId": "list_ledger_events_api_v1_paper_ledger_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Virtual account identifier",
+              "default": "default_paper",
+              "title": "Account Id"
+            },
+            "description": "Virtual account identifier"
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by event type",
+              "title": "Event Type"
+            },
+            "description": "Filter by event type"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response List Ledger Events Api V1 Paper Ledger Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/paper/positions/{symbol}/close": {
+      "post": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "Close open paper position",
+        "description": "Liquidate an open position completely at current market price.",
+        "operationId": "close_paper_position_api_v1_paper_positions__symbol__close_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "default_paper",
+              "title": "Account Id"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PositionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/paper/reset": {
+      "post": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "Reset virtual paper account",
+        "description": "Reset virtual account cash balance to initial capital and liquidate positions.",
+        "operationId": "reset_paper_account_api_v1_paper_reset_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetAccountRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Reset Paper Account Api V1 Paper Reset Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meme/radar": {
+      "get": {
+        "tags": [
+          "Meme Coin Radar"
+        ],
+        "summary": "Get ranked meme tokens and risk audits",
+        "description": "Retrieve ranked meme tokens with DEX liquidity depth, volume acceleration, and active risk deductions.",
+        "operationId": "get_meme_radar_api_v1_meme_radar_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "min_score",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "description": "Minimum opportunity score filter",
+              "default": 0.0,
+              "title": "Min Score"
+            },
+            "description": "Minimum opportunity score filter"
+          },
+          {
+            "name": "max_risk_level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter max risk (LOW, MODERATE, HIGH, CRITICAL)",
+              "title": "Max Risk Level"
+            },
+            "description": "Filter max risk (LOW, MODERATE, HIGH, CRITICAL)"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemeAuditRecord"
+                  },
+                  "title": "Response Get Meme Radar Api V1 Meme Radar Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meme/{symbol}": {
+      "get": {
+        "tags": [
+          "Meme Coin Radar"
+        ],
+        "summary": "Get meme token deep-dive audit",
+        "description": "Retrieve detailed DEX liquidity, holder distribution, and risk penalty card for a specific meme token.",
+        "operationId": "get_meme_detail_api_v1_meme__symbol__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemeAuditRecord"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sectors": {
+      "get": {
+        "tags": [
+          "Sectors & Rotation"
+        ],
+        "summary": "Get crypto sector rotation matrix",
+        "description": "Retrieve performance, momentum acceleration, breadth, and rotation status across all crypto sectors.",
+        "operationId": "list_sectors_api_v1_sectors_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rotation_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by status: LEADING, ACCELERATING, WEAKENING, DECLINING",
+              "title": "Rotation Status"
+            },
+            "description": "Filter by status: LEADING, ACCELERATING, WEAKENING, DECLINING"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SectorPerformance"
+                  },
+                  "title": "Response List Sectors Api V1 Sectors Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sectors/{sector_name}": {
+      "get": {
+        "tags": [
+          "Sectors & Rotation"
+        ],
+        "summary": "Get single sector performance",
+        "description": "Retrieve detailed performance and breadth for a specific sector.",
+        "operationId": "get_sector_detail_api_v1_sectors__sector_name__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sector_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sector Name"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SectorPerformance"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/alerts": {
+      "get": {
+        "tags": [
+          "Alerts & Signals"
+        ],
+        "summary": "List triggered alerts and signals",
+        "description": "Retrieve historical alerts ordered by timestamp descending.\n\nNever returns fabricated placeholders if empty (Invariant 2).",
+        "operationId": "list_alerts_api_v1_alerts_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "severity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by severity: INFO, WARNING, CRITICAL",
+              "title": "Severity"
+            },
+            "description": "Filter by severity: INFO, WARNING, CRITICAL"
+          },
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by asset symbol",
+              "title": "Symbol"
+            },
+            "description": "Filter by asset symbol"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AlertPayload"
+                  },
+                  "title": "Response List Alerts Api V1 Alerts Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/alerts/simulate": {
+      "post": {
+        "tags": [
+          "Alerts & Signals"
+        ],
+        "summary": "Emit a simulated test alert",
+        "description": "Manually dispatch a signal through the alert engine and broadcast via SSE.",
+        "operationId": "simulate_alert_api_v1_alerts_simulate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulateAlertRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stream/scanner": {
+      "get": {
+        "tags": [
+          "Streaming"
+        ],
+        "summary": "SSE stream of real-time scanner ranking updates",
+        "description": "Subscribe to real-time scanner ranking changes.",
+        "operationId": "stream_scanner_api_v1_stream_scanner_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stream/prices": {
+      "get": {
+        "tags": [
+          "Streaming"
+        ],
+        "summary": "SSE stream of real-time price updates for requested symbols",
+        "description": "Subscribe to real-time market price updates for selected asset symbols.",
+        "operationId": "stream_prices_api_v1_stream_prices_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbols",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated symbols to track",
+              "default": "BTC,ETH,SOL",
+              "title": "Symbols"
+            },
+            "description": "Comma-separated symbols to track"
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stream/alerts": {
+      "get": {
+        "tags": [
+          "Streaming"
+        ],
+        "summary": "SSE stream of real-time risk and signal alerts",
+        "description": "Subscribe to real-time alert notifications.",
+        "operationId": "stream_alerts_api_v1_stream_alerts_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AlertPayload": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Time"
+          },
+          "alert_type": {
+            "$ref": "#/components/schemas/AlertType"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/AlertSeverity",
+            "default": "INFO"
+          },
+          "asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Id"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "details": {
+            "type": "object",
+            "title": "Details"
+          },
+          "is_read": {
+            "type": "boolean",
+            "title": "Is Read",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "alert_type",
+          "message"
+        ],
+        "title": "AlertPayload",
+        "description": "Normalized payload describing a triggered alert."
+      },
+      "AlertSeverity": {
+        "type": "string",
+        "enum": [
+          "INFO",
+          "WARNING",
+          "CRITICAL"
+        ],
+        "title": "AlertSeverity",
+        "description": "Alert priority level."
+      },
+      "AlertType": {
+        "type": "string",
+        "enum": [
+          "MOMENTUM_BREAKOUT",
+          "RELATIVE_STRENGTH",
+          "REGIME_CHANGE",
+          "RISK_PENALTY",
+          "SECTOR_ROTATION",
+          "ORDER_EXECUTION"
+        ],
+        "title": "AlertType",
+        "description": "Classification of signal or system event."
+      },
+      "AssetClass": {
+        "type": "string",
+        "enum": [
+          "CORE",
+          "LARGE_CAP_ALT",
+          "ALTCOIN",
+          "MID_CAP",
+          "SMALL_CAP",
+          "MEME",
+          "UNKNOWN"
+        ],
+        "title": "AssetClass"
+      },
+      "AssetResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "asset_class": {
+            "type": "string",
+            "title": "Asset Class"
+          },
+          "primary_sector": {
+            "type": "string",
+            "title": "Primary Sector"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "markets": {
+            "items": {
+              "$ref": "#/components/schemas/MarketResponse"
+            },
+            "type": "array",
+            "title": "Markets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "symbol",
+          "asset_class",
+          "primary_sector",
+          "is_active"
+        ],
+        "title": "AssetResponse"
+      },
+      "AuthIdentity": {
+        "properties": {
+          "auth_type": {
+            "type": "string",
+            "enum": [
+              "api_key",
+              "jwt"
+            ],
+            "title": "Auth Type",
+            "description": "Authentication mechanism used"
+          },
+          "identity": {
+            "type": "string",
+            "title": "Identity",
+            "description": "Subject or API key identifier"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scopes"
+          },
+          "authenticated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Authenticated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "auth_type",
+          "identity"
+        ],
+        "title": "AuthIdentity",
+        "description": "Authenticated caller identity representation."
+      },
+      "BacktestDetailResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "strategy_name": {
+            "type": "string",
+            "title": "Strategy Name"
+          },
+          "strategy_version": {
+            "type": "string",
+            "title": "Strategy Version"
+          },
+          "start_time": {
+            "type": "string",
+            "title": "Start Time"
+          },
+          "end_time": {
+            "type": "string",
+            "title": "End Time"
+          },
+          "parameters": {
+            "type": "object",
+            "title": "Parameters"
+          },
+          "total_return_pct": {
+            "type": "number",
+            "title": "Total Return Pct"
+          },
+          "cagr": {
+            "type": "number",
+            "title": "Cagr"
+          },
+          "sharpe_ratio": {
+            "type": "number",
+            "title": "Sharpe Ratio"
+          },
+          "sortino_ratio": {
+            "type": "number",
+            "title": "Sortino Ratio"
+          },
+          "max_drawdown_pct": {
+            "type": "number",
+            "title": "Max Drawdown Pct"
+          },
+          "win_rate": {
+            "type": "number",
+            "title": "Win Rate"
+          },
+          "profit_factor": {
+            "type": "number",
+            "title": "Profit Factor"
+          },
+          "benchmark_return_pct": {
+            "type": "number",
+            "title": "Benchmark Return Pct"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "trades": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Trades"
+          },
+          "metrics": {
+            "type": "object",
+            "title": "Metrics"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "strategy_name",
+          "strategy_version",
+          "start_time",
+          "end_time",
+          "parameters",
+          "total_return_pct",
+          "cagr",
+          "sharpe_ratio",
+          "sortino_ratio",
+          "max_drawdown_pct",
+          "win_rate",
+          "profit_factor",
+          "benchmark_return_pct",
+          "created_at",
+          "trades",
+          "metrics"
+        ],
+        "title": "BacktestDetailResponse",
+        "description": "Detailed backtest result including trade history and metrics."
+      },
+      "BacktestSummaryResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "strategy_name": {
+            "type": "string",
+            "title": "Strategy Name"
+          },
+          "strategy_version": {
+            "type": "string",
+            "title": "Strategy Version"
+          },
+          "start_time": {
+            "type": "string",
+            "title": "Start Time"
+          },
+          "end_time": {
+            "type": "string",
+            "title": "End Time"
+          },
+          "parameters": {
+            "type": "object",
+            "title": "Parameters"
+          },
+          "total_return_pct": {
+            "type": "number",
+            "title": "Total Return Pct"
+          },
+          "cagr": {
+            "type": "number",
+            "title": "Cagr"
+          },
+          "sharpe_ratio": {
+            "type": "number",
+            "title": "Sharpe Ratio"
+          },
+          "sortino_ratio": {
+            "type": "number",
+            "title": "Sortino Ratio"
+          },
+          "max_drawdown_pct": {
+            "type": "number",
+            "title": "Max Drawdown Pct"
+          },
+          "win_rate": {
+            "type": "number",
+            "title": "Win Rate"
+          },
+          "profit_factor": {
+            "type": "number",
+            "title": "Profit Factor"
+          },
+          "benchmark_return_pct": {
+            "type": "number",
+            "title": "Benchmark Return Pct"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "strategy_name",
+          "strategy_version",
+          "start_time",
+          "end_time",
+          "parameters",
+          "total_return_pct",
+          "cagr",
+          "sharpe_ratio",
+          "sortino_ratio",
+          "max_drawdown_pct",
+          "win_rate",
+          "profit_factor",
+          "benchmark_return_pct",
+          "created_at"
+        ],
+        "title": "BacktestSummaryResponse",
+        "description": "Summary of a completed backtest execution."
+      },
+      "CandleResponse": {
+        "properties": {
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "open": {
+            "type": "number",
+            "title": "Open"
+          },
+          "high": {
+            "type": "number",
+            "title": "High"
+          },
+          "low": {
+            "type": "number",
+            "title": "Low"
+          },
+          "close": {
+            "type": "number",
+            "title": "Close"
+          },
+          "volume": {
+            "type": "number",
+            "title": "Volume"
+          },
+          "validation_status": {
+            "type": "string",
+            "title": "Validation Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close",
+          "volume",
+          "validation_status"
+        ],
+        "title": "CandleResponse"
+      },
+      "CsrfResponse": {
+        "properties": {
+          "csrf_token": {
+            "type": "string",
+            "title": "Csrf Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "csrf_token"
+        ],
+        "title": "CsrfResponse",
+        "description": "CSRF token for browser session initialization."
+      },
+      "FactorContributionResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "weight": {
+            "type": "number",
+            "title": "Weight"
+          },
+          "contribution": {
+            "type": "number",
+            "title": "Contribution"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "score",
+          "weight",
+          "contribution"
+        ],
+        "title": "FactorContributionResponse"
+      },
+      "FillResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "order_id": {
+            "type": "string",
+            "title": "Order Id"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "fill_price": {
+            "type": "number",
+            "title": "Fill Price"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity"
+          },
+          "fee_usd": {
+            "type": "number",
+            "title": "Fee Usd"
+          },
+          "slippage_usd": {
+            "type": "number",
+            "title": "Slippage Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "order_id",
+          "time",
+          "fill_price",
+          "quantity",
+          "fee_usd",
+          "slippage_usd"
+        ],
+        "title": "FillResponse",
+        "description": "Execution fill details."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "app": {
+            "type": "string",
+            "title": "App"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "environment": {
+            "type": "string",
+            "title": "Environment"
+          },
+          "data_mode": {
+            "type": "string",
+            "title": "Data Mode"
+          },
+          "live_trading_enabled": {
+            "type": "boolean",
+            "title": "Live Trading Enabled"
+          },
+          "paper_trading_enabled": {
+            "type": "boolean",
+            "title": "Paper Trading Enabled"
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp"
+          },
+          "uptime_seconds": {
+            "type": "number",
+            "title": "Uptime Seconds"
+          },
+          "components": {
+            "type": "object",
+            "title": "Components"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "app",
+          "version",
+          "environment",
+          "data_mode",
+          "live_trading_enabled",
+          "paper_trading_enabled",
+          "timestamp",
+          "uptime_seconds",
+          "components"
+        ],
+        "title": "HealthResponse"
+      },
+      "JobCreatedResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "code_version": {
+            "type": "string",
+            "title": "Code Version"
+          },
+          "config_hash": {
+            "type": "string",
+            "title": "Config Hash"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "code_version",
+          "config_hash",
+          "message"
+        ],
+        "title": "JobCreatedResponse",
+        "description": "Initial response returned upon scheduling an async backtest job."
+      },
+      "MarketResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "exchange_id": {
+            "type": "string",
+            "title": "Exchange Id"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "quote_asset": {
+            "type": "string",
+            "title": "Quote Asset"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "exchange_id",
+          "symbol",
+          "quote_asset",
+          "is_active"
+        ],
+        "title": "MarketResponse"
+      },
+      "MemeAuditRecord": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "chain_id": {
+            "type": "string",
+            "title": "Chain Id"
+          },
+          "dex_id": {
+            "type": "string",
+            "title": "Dex Id"
+          },
+          "pair_address": {
+            "type": "string",
+            "title": "Pair Address"
+          },
+          "price_usd": {
+            "type": "number",
+            "title": "Price Usd"
+          },
+          "liquidity_usd": {
+            "type": "number",
+            "title": "Liquidity Usd"
+          },
+          "volume_24h_usd": {
+            "type": "number",
+            "title": "Volume 24H Usd"
+          },
+          "volume_acceleration_1h": {
+            "type": "number",
+            "title": "Volume Acceleration 1H"
+          },
+          "volume_acceleration_5m": {
+            "type": "number",
+            "title": "Volume Acceleration 5M"
+          },
+          "buy_pressure_ratio": {
+            "type": "number",
+            "title": "Buy Pressure Ratio"
+          },
+          "pair_age_hours": {
+            "type": "number",
+            "title": "Pair Age Hours"
+          },
+          "top_10_holders_pct": {
+            "type": "number",
+            "title": "Top 10 Holders Pct"
+          },
+          "holder_count": {
+            "type": "integer",
+            "title": "Holder Count"
+          },
+          "liquidity_score": {
+            "type": "number",
+            "title": "Liquidity Score"
+          },
+          "volume_momentum_score": {
+            "type": "number",
+            "title": "Volume Momentum Score"
+          },
+          "buy_pressure_score": {
+            "type": "number",
+            "title": "Buy Pressure Score"
+          },
+          "holder_distribution_score": {
+            "type": "number",
+            "title": "Holder Distribution Score"
+          },
+          "gross_score": {
+            "type": "number",
+            "title": "Gross Score"
+          },
+          "total_penalties": {
+            "type": "number",
+            "title": "Total Penalties"
+          },
+          "opportunity_score": {
+            "type": "number",
+            "title": "Opportunity Score"
+          },
+          "risk_level": {
+            "type": "string",
+            "title": "Risk Level"
+          },
+          "risk_flags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Risk Flags"
+          },
+          "penalties_breakdown": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Penalties Breakdown"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol",
+          "name",
+          "chain_id",
+          "dex_id",
+          "pair_address",
+          "price_usd",
+          "liquidity_usd",
+          "volume_24h_usd",
+          "volume_acceleration_1h",
+          "volume_acceleration_5m",
+          "buy_pressure_ratio",
+          "pair_age_hours",
+          "top_10_holders_pct",
+          "holder_count",
+          "liquidity_score",
+          "volume_momentum_score",
+          "buy_pressure_score",
+          "holder_distribution_score",
+          "gross_score",
+          "total_penalties",
+          "opportunity_score",
+          "risk_level"
+        ],
+        "title": "MemeAuditRecord",
+        "description": "Comprehensive quantitative analysis and risk card for a meme token."
+      },
+      "OrderResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "side": {
+            "type": "string",
+            "title": "Side"
+          },
+          "order_type": {
+            "type": "string",
+            "title": "Order Type"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "fills": {
+            "items": {
+              "$ref": "#/components/schemas/FillResponse"
+            },
+            "type": "array",
+            "title": "Fills"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "account_id",
+          "symbol",
+          "side",
+          "order_type",
+          "quantity",
+          "status",
+          "created_at"
+        ],
+        "title": "OrderResponse",
+        "description": "Order status and confirmation."
+      },
+      "OrderSubmitRequest": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Virtual account identifier",
+            "default": "default_paper"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Asset symbol to trade (e.g. BTC, ETH, SOL, DOGE)"
+          },
+          "side": {
+            "$ref": "#/components/schemas/PaperOrderSide",
+            "description": "BUY or SELL"
+          },
+          "order_type": {
+            "$ref": "#/components/schemas/PaperOrderType",
+            "description": "Order execution type",
+            "default": "MARKET"
+          },
+          "quantity": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Quantity",
+            "description": "Order asset quantity"
+          },
+          "limit_price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Price",
+            "description": "Optional limit price"
+          },
+          "stop_price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Price",
+            "description": "Optional stop trigger price"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key",
+            "description": "Client-generated UUID to prevent duplicate order submission"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol",
+          "side",
+          "quantity"
+        ],
+        "title": "OrderSubmitRequest",
+        "description": "Payload to place a virtual paper order \u2014 v2.0.\n\nidempotency_key: optional client-generated UUID to prevent duplicate submission.\nIf an order with this key already exists, DuplicateOrderError is raised."
+      },
+      "PaperOrderSide": {
+        "type": "string",
+        "enum": [
+          "BUY",
+          "SELL"
+        ],
+        "title": "PaperOrderSide",
+        "description": "Paper order transaction direction."
+      },
+      "PaperOrderType": {
+        "type": "string",
+        "enum": [
+          "MARKET",
+          "LIMIT",
+          "STOP_LOSS"
+        ],
+        "title": "PaperOrderType",
+        "description": "Paper order execution type."
+      },
+      "PenaltyItem": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "penalty_pct": {
+            "type": "number",
+            "title": "Penalty Pct"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "penalty_pct",
+          "reason"
+        ],
+        "title": "PenaltyItem",
+        "description": "Frictional or risk penalty deducted from raw ranking."
+      },
+      "PenaltyResponse": {
+        "properties": {
+          "flag": {
+            "type": "string",
+            "title": "Flag"
+          },
+          "deduction": {
+            "type": "number",
+            "title": "Deduction"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "flag",
+          "deduction",
+          "reason"
+        ],
+        "title": "PenaltyResponse"
+      },
+      "PortfolioSummaryResponse": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "base_currency": {
+            "type": "string",
+            "title": "Base Currency"
+          },
+          "starting_balance": {
+            "type": "number",
+            "title": "Starting Balance"
+          },
+          "cash_balance": {
+            "type": "number",
+            "title": "Cash Balance"
+          },
+          "invested_capital": {
+            "type": "number",
+            "title": "Invested Capital"
+          },
+          "total_equity": {
+            "type": "number",
+            "title": "Total Equity"
+          },
+          "unrealized_pnl": {
+            "type": "number",
+            "title": "Unrealized Pnl"
+          },
+          "realized_pnl": {
+            "type": "number",
+            "title": "Realized Pnl"
+          },
+          "total_pnl": {
+            "type": "number",
+            "title": "Total Pnl"
+          },
+          "total_return_pct": {
+            "type": "number",
+            "title": "Total Return Pct"
+          },
+          "drawdown_pct": {
+            "type": "number",
+            "title": "Drawdown Pct"
+          },
+          "peak_equity": {
+            "type": "number",
+            "title": "Peak Equity"
+          },
+          "gross_exposure": {
+            "type": "number",
+            "title": "Gross Exposure"
+          },
+          "net_exposure": {
+            "type": "number",
+            "title": "Net Exposure"
+          },
+          "meme_exposure_pct": {
+            "type": "number",
+            "title": "Meme Exposure Pct"
+          },
+          "max_single_position_pct": {
+            "type": "number",
+            "title": "Max Single Position Pct"
+          },
+          "open_positions_count": {
+            "type": "integer",
+            "title": "Open Positions Count"
+          },
+          "open_positions": {
+            "items": {
+              "$ref": "#/components/schemas/PositionResponse"
+            },
+            "type": "array",
+            "title": "Open Positions"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "name",
+          "base_currency",
+          "starting_balance",
+          "cash_balance",
+          "invested_capital",
+          "total_equity",
+          "unrealized_pnl",
+          "realized_pnl",
+          "total_pnl",
+          "total_return_pct",
+          "drawdown_pct",
+          "peak_equity",
+          "gross_exposure",
+          "net_exposure",
+          "meme_exposure_pct",
+          "max_single_position_pct",
+          "open_positions_count"
+        ],
+        "title": "PortfolioSummaryResponse",
+        "description": "Comprehensive real-time paper account state and risk metrics."
+      },
+      "PositionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "side": {
+            "type": "string",
+            "title": "Side"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity"
+          },
+          "avg_entry_price": {
+            "type": "number",
+            "title": "Avg Entry Price"
+          },
+          "current_price": {
+            "type": "number",
+            "title": "Current Price"
+          },
+          "market_value": {
+            "type": "number",
+            "title": "Market Value"
+          },
+          "unrealized_pnl": {
+            "type": "number",
+            "title": "Unrealized Pnl"
+          },
+          "unrealized_pnl_pct": {
+            "type": "number",
+            "title": "Unrealized Pnl Pct"
+          },
+          "realized_pnl": {
+            "type": "number",
+            "title": "Realized Pnl"
+          },
+          "entry_time": {
+            "type": "string",
+            "title": "Entry Time"
+          },
+          "exit_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Time"
+          },
+          "is_open": {
+            "type": "boolean",
+            "title": "Is Open"
+          },
+          "exit_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Reason"
+          },
+          "price_stale": {
+            "type": "boolean",
+            "title": "Price Stale",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "account_id",
+          "symbol",
+          "side",
+          "quantity",
+          "avg_entry_price",
+          "current_price",
+          "market_value",
+          "unrealized_pnl",
+          "unrealized_pnl_pct",
+          "realized_pnl",
+          "entry_time",
+          "is_open"
+        ],
+        "title": "PositionResponse",
+        "description": "Open or closed virtual paper position \u2014 v2.0.\n\nprice_stale: True if the current_price used for MTM is stale (no live data).\nWhen True, unrealized_pnl and market_value should be treated as approximate."
+      },
+      "ReconciliationResult": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          },
+          "discrepancy_count": {
+            "type": "integer",
+            "title": "Discrepancy Count"
+          },
+          "discrepancies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Discrepancies"
+          },
+          "replayed_cash": {
+            "type": "string",
+            "title": "Replayed Cash"
+          },
+          "actual_cash": {
+            "type": "string",
+            "title": "Actual Cash"
+          },
+          "replayed_positions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Replayed Positions"
+          },
+          "actual_positions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Actual Positions"
+          },
+          "events_replayed": {
+            "type": "integer",
+            "title": "Events Replayed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "passed",
+          "discrepancy_count",
+          "discrepancies",
+          "replayed_cash",
+          "actual_cash",
+          "replayed_positions",
+          "actual_positions",
+          "events_replayed"
+        ],
+        "title": "ReconciliationResult",
+        "description": "Result of ledger event replay and consistency audit."
+      },
+      "ResetAccountRequest": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "default": "default_paper"
+          },
+          "starting_balance": {
+            "type": "number",
+            "minimum": 1000.0,
+            "title": "Starting Balance",
+            "default": 100000.0
+          }
+        },
+        "type": "object",
+        "title": "ResetAccountRequest",
+        "description": "Payload to reset virtual account."
+      },
+      "RunBacktestRequest": {
+        "properties": {
+          "strategy_name": {
+            "type": "string",
+            "title": "Strategy Name",
+            "description": "Registered strategy name"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Symbols"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Date",
+            "description": "UTC start datetime for historical simulation"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End Date",
+            "description": "UTC end datetime for historical simulation"
+          },
+          "initial_capital": {
+            "type": "number",
+            "minimum": 1000.0,
+            "title": "Initial Capital",
+            "description": "Starting cash in USD",
+            "default": 100000.0
+          },
+          "maker_fee_bps": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Maker Fee Bps",
+            "description": "Maker fee in bps",
+            "default": 2.0
+          },
+          "taker_fee_bps": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Taker Fee Bps",
+            "description": "Taker fee in bps",
+            "default": 5.0
+          },
+          "slippage_model": {
+            "$ref": "#/components/schemas/SlippageModelType",
+            "default": "market_impact"
+          },
+          "fixed_slippage_bps": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Fixed Slippage Bps",
+            "default": 5.0
+          },
+          "impact_gamma": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Impact Gamma",
+            "default": 0.1
+          },
+          "benchmark_symbol": {
+            "type": "string",
+            "title": "Benchmark Symbol",
+            "default": "BTC"
+          },
+          "max_open_positions": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Max Open Positions",
+            "default": 10
+          },
+          "max_position_weight": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.01,
+            "title": "Max Position Weight",
+            "default": 0.25
+          },
+          "cash_buffer_pct": {
+            "type": "number",
+            "maximum": 0.5,
+            "minimum": 0.0,
+            "title": "Cash Buffer Pct",
+            "default": 0.02
+          },
+          "point_in_time_universe": {
+            "type": "boolean",
+            "title": "Point In Time Universe",
+            "description": "Enforce survivorship bias prevention",
+            "default": true
+          },
+          "parameters": {
+            "type": "object",
+            "title": "Parameters",
+            "description": "Strategy hyperparameters"
+          }
+        },
+        "type": "object",
+        "required": [
+          "strategy_name"
+        ],
+        "title": "RunBacktestRequest",
+        "description": "Payload to trigger an asynchronous backtest simulation."
+      },
+      "ScannerRankingItem": {
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "title": "Rank"
+          },
+          "asset_id": {
+            "type": "string",
+            "title": "Asset Id"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "asset_class": {
+            "type": "string",
+            "title": "Asset Class"
+          },
+          "primary_sector": {
+            "type": "string",
+            "title": "Primary Sector"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "price_age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Age Seconds"
+          },
+          "data_fresh": {
+            "type": "boolean",
+            "title": "Data Fresh",
+            "default": false
+          },
+          "candle_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candle Time"
+          },
+          "return_1d_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return 1D Pct"
+          },
+          "return_7d_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return 7D Pct"
+          },
+          "return_30d_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return 30D Pct"
+          },
+          "opportunity_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opportunity Score"
+          },
+          "score_breakdown": {
+            "$ref": "#/components/schemas/ScoreBreakdown"
+          },
+          "penalties": {
+            "items": {
+              "$ref": "#/components/schemas/PenaltyItem"
+            },
+            "type": "array",
+            "title": "Penalties"
+          },
+          "risk_flags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Risk Flags"
+          },
+          "model_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Type"
+          },
+          "ranked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ranked At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rank",
+          "asset_id",
+          "symbol",
+          "name",
+          "asset_class",
+          "primary_sector",
+          "score_breakdown"
+        ],
+        "title": "ScannerRankingItem",
+        "description": "Comprehensive single-asset scanner ranking row."
+      },
+      "ScannerRankingsResponse": {
+        "properties": {
+          "data_mode": {
+            "type": "string",
+            "title": "Data Mode"
+          },
+          "scanner_status": {
+            "type": "string",
+            "title": "Scanner Status"
+          },
+          "total_count": {
+            "type": "integer",
+            "title": "Total Count"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          },
+          "fresh_count": {
+            "type": "integer",
+            "title": "Fresh Count"
+          },
+          "stale_count": {
+            "type": "integer",
+            "title": "Stale Count"
+          },
+          "checked_at": {
+            "type": "string",
+            "title": "Checked At"
+          },
+          "rankings": {
+            "items": {
+              "$ref": "#/components/schemas/ScannerRankingItem"
+            },
+            "type": "array",
+            "title": "Rankings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data_mode",
+          "scanner_status",
+          "total_count",
+          "limit",
+          "offset",
+          "fresh_count",
+          "stale_count",
+          "checked_at",
+          "rankings"
+        ],
+        "title": "ScannerRankingsResponse",
+        "description": "Paginated scanner rankings response."
+      },
+      "ScoreBreakdown": {
+        "properties": {
+          "opportunity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opportunity"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality"
+          },
+          "risk": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk"
+          },
+          "trend": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trend"
+          },
+          "momentum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Momentum"
+          },
+          "relative_strength": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relative Strength"
+          },
+          "liquidity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Liquidity"
+          },
+          "factors": {
+            "type": "object",
+            "title": "Factors"
+          }
+        },
+        "type": "object",
+        "title": "ScoreBreakdown",
+        "description": "Detailed multi-factor component breakdown."
+      },
+      "ScoreDetailResponse": {
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "title": "Asset Id"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "asset_class": {
+            "type": "string",
+            "title": "Asset Class"
+          },
+          "primary_sector": {
+            "type": "string",
+            "title": "Primary Sector"
+          },
+          "model_type": {
+            "type": "string",
+            "title": "Model Type"
+          },
+          "opportunity_score": {
+            "type": "number",
+            "title": "Opportunity Score"
+          },
+          "quality_score": {
+            "type": "number",
+            "title": "Quality Score"
+          },
+          "risk_score": {
+            "type": "number",
+            "title": "Risk Score"
+          },
+          "trend_score": {
+            "type": "number",
+            "title": "Trend Score"
+          },
+          "momentum_score": {
+            "type": "number",
+            "title": "Momentum Score"
+          },
+          "relative_strength_score": {
+            "type": "number",
+            "title": "Relative Strength Score"
+          },
+          "liquidity_score": {
+            "type": "number",
+            "title": "Liquidity Score"
+          },
+          "risk_flags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Risk Flags"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "components": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FactorContributionResponse"
+            },
+            "type": "object",
+            "title": "Components"
+          },
+          "penalties": {
+            "items": {
+              "$ref": "#/components/schemas/PenaltyResponse"
+            },
+            "type": "array",
+            "title": "Penalties"
+          },
+          "explainability_summary": {
+            "type": "string",
+            "title": "Explainability Summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "asset_id",
+          "symbol",
+          "name",
+          "asset_class",
+          "primary_sector",
+          "model_type",
+          "opportunity_score",
+          "quality_score",
+          "risk_score",
+          "trend_score",
+          "momentum_score",
+          "relative_strength_score",
+          "liquidity_score",
+          "risk_flags",
+          "time",
+          "components",
+          "penalties",
+          "explainability_summary"
+        ],
+        "title": "ScoreDetailResponse"
+      },
+      "ScoreSummaryResponse": {
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "title": "Asset Id"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "asset_class": {
+            "type": "string",
+            "title": "Asset Class"
+          },
+          "primary_sector": {
+            "type": "string",
+            "title": "Primary Sector"
+          },
+          "model_type": {
+            "type": "string",
+            "title": "Model Type"
+          },
+          "opportunity_score": {
+            "type": "number",
+            "title": "Opportunity Score"
+          },
+          "quality_score": {
+            "type": "number",
+            "title": "Quality Score"
+          },
+          "risk_score": {
+            "type": "number",
+            "title": "Risk Score"
+          },
+          "trend_score": {
+            "type": "number",
+            "title": "Trend Score"
+          },
+          "momentum_score": {
+            "type": "number",
+            "title": "Momentum Score"
+          },
+          "relative_strength_score": {
+            "type": "number",
+            "title": "Relative Strength Score"
+          },
+          "liquidity_score": {
+            "type": "number",
+            "title": "Liquidity Score"
+          },
+          "risk_flags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Risk Flags"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "asset_id",
+          "symbol",
+          "name",
+          "asset_class",
+          "primary_sector",
+          "model_type",
+          "opportunity_score",
+          "quality_score",
+          "risk_score",
+          "trend_score",
+          "momentum_score",
+          "relative_strength_score",
+          "liquidity_score",
+          "risk_flags",
+          "time"
+        ],
+        "title": "ScoreSummaryResponse"
+      },
+      "SectorPerformance": {
+        "properties": {
+          "sector_name": {
+            "type": "string",
+            "title": "Sector Name"
+          },
+          "asset_count": {
+            "type": "integer",
+            "title": "Asset Count"
+          },
+          "return_1d": {
+            "type": "number",
+            "title": "Return 1D"
+          },
+          "return_7d": {
+            "type": "number",
+            "title": "Return 7D"
+          },
+          "return_30d": {
+            "type": "number",
+            "title": "Return 30D"
+          },
+          "breadth_pct": {
+            "type": "number",
+            "title": "Breadth Pct"
+          },
+          "volume_change_7d_pct": {
+            "type": "number",
+            "title": "Volume Change 7D Pct"
+          },
+          "rotation_status": {
+            "type": "string",
+            "title": "Rotation Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sector_name",
+          "asset_count",
+          "return_1d",
+          "return_7d",
+          "return_30d",
+          "breadth_pct",
+          "volume_change_7d_pct",
+          "rotation_status"
+        ],
+        "title": "SectorPerformance",
+        "description": "Calculated performance and rotation statistics for a single crypto sector."
+      },
+      "SimulateAlertRequest": {
+        "properties": {
+          "alert_type": {
+            "$ref": "#/components/schemas/AlertType",
+            "default": "MOMENTUM_BREAKOUT"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/AlertSeverity",
+            "default": "INFO"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "default": "SOL"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": "Simulated breakout alert: +12.4% gain with 3.1x RVOL."
+          },
+          "details": {
+            "type": "object",
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "title": "SimulateAlertRequest",
+        "description": "Payload to emit a test alert."
+      },
+      "SlippageModelType": {
+        "type": "string",
+        "enum": [
+          "none",
+          "fixed_bps",
+          "market_impact"
+        ],
+        "title": "SlippageModelType",
+        "description": "Slippage modeling algorithms."
+      },
+      "StrategyInfoResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "default_parameters": {
+            "type": "object",
+            "title": "Default Parameters"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "description",
+          "default_parameters"
+        ],
+        "title": "StrategyInfoResponse",
+        "description": "Information schema for a registered trading strategy."
+      },
+      "Timeframe": {
+        "type": "string",
+        "enum": [
+          "5m",
+          "15m",
+          "1h",
+          "4h",
+          "1d"
+        ],
+        "title": "Timeframe"
+      },
+      "TokenRequest": {
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "title": "Api Key",
+            "description": "Valid API key"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject",
+            "description": "Client identifier or username",
+            "default": "quant-researcher"
+          }
+        },
+        "type": "object",
+        "required": [
+          "api_key"
+        ],
+        "title": "TokenRequest",
+        "description": "Payload to request a JWT token using an API key or researcher identity."
+      },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "expires_in",
+          "subject"
+        ],
+        "title": "TokenResponse",
+        "description": "JWT Bearer access token response."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}
