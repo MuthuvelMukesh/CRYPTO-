@@ -135,6 +135,75 @@ def test_no_future_lookahead_bias_in_backtesting() -> None:
         assert b_trade["pnl_usd"] == p_trade["pnl_usd"]
 
 
+def test_no_same_bar_lookahead_bias() -> None:
+    """Same-Bar Look-Ahead Bias Verification.
+
+    Signals computed at the close of bar T using bar T's features and close price
+    must ONLY be filled at the open of bar T+1 or later.
+    Fills occurring at or before time T (entry_time <= T) MUST NOT be altered by
+    perturbing bar T's own close, high, low, or features.
+    """
+    t0 = datetime(2023, 1, 1)
+    symbols = ["BTC", "ETH", "SOL"]
+    candles, features = _generate_synthetic_candles(symbols, t0, days=30)
+
+    # In baseline, day 10 has no trigger for SOL
+    cutoff_day = 10
+    cutoff_time = t0 + timedelta(days=cutoff_day)
+
+    config = BacktestConfig(
+        strategy_name="MomentumBreakout",
+        start_date=t0,
+        end_date=t0 + timedelta(days=29),
+        initial_capital=100000.0,
+        slippage_model=SlippageModelType.NONE,
+    )
+    strategy = MomentumBreakoutStrategy(parameters={"top_n_assets": 1, "min_return_30d": 0.50})
+
+    # Run 1: Baseline
+    engine_base = BacktestEngine(config, strategy)
+    result_base = engine_base.run(copy.deepcopy(candles), copy.deepcopy(features))
+
+    # Run 2: Strongly perturb bar T's OWN close, high, low, and features for SOL at time T
+    # (while keeping open price at time T identical)
+    perturbed_candles = copy.deepcopy(candles)
+    perturbed_features = copy.deepcopy(features)
+
+    for c in perturbed_candles["SOL"]:
+        if c["time"] == cutoff_time:
+            # Bar T open is unchanged; close, high, low are spiked
+            c["high"] = c["open"] * 2.0
+            c["low"] = c["open"] * 0.99
+            c["close"] = c["open"] * 1.8
+
+    for f in perturbed_features["SOL"]:
+        if f["time"] == cutoff_time:
+            f["return_30d"] = 0.85
+            f["volatility_adjusted_momentum"] = 15.0
+            f["opportunity_score"] = 99.0
+
+    engine_perturbed = BacktestEngine(config, strategy)
+    result_perturbed = engine_perturbed.run(perturbed_candles, perturbed_features)
+
+    # Trades entered at or before cutoff_time MUST NOT change!
+    # Specifically, bar T's close/features cannot cause a fill at bar T's open (entry_time == cutoff_time).
+    base_entries_up_to_cutoff = [
+        t for t in result_base.trades if datetime.fromisoformat(t["entry_time"]) <= cutoff_time
+    ]
+    pert_entries_up_to_cutoff = [
+        t for t in result_perturbed.trades if datetime.fromisoformat(t["entry_time"]) <= cutoff_time
+    ]
+
+    assert len(base_entries_up_to_cutoff) == len(pert_entries_up_to_cutoff), (
+        f"Same-bar look-ahead detected! Perturbing bar T ({cutoff_time}) close/features "
+        f"altered fills at or before T: {len(base_entries_up_to_cutoff)} baseline vs {len(pert_entries_up_to_cutoff)} perturbed."
+    )
+    for b_trade, p_trade in zip(base_entries_up_to_cutoff, pert_entries_up_to_cutoff, strict=True):
+        assert b_trade["asset_id"] == p_trade["asset_id"]
+        assert b_trade["entry_time"] == p_trade["entry_time"]
+        assert b_trade["entry_price"] == p_trade["entry_price"]
+
+
 def test_survivorship_bias_handling_delisted_asset() -> None:
     """Survivorship Bias Prevention Test.
 

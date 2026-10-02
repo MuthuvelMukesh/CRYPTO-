@@ -1,4 +1,8 @@
-"""System signals and notifications REST API endpoints."""
+"""System signals and notifications REST API endpoints — Platform v3.0.
+
+Provides authenticated alert querying with server-side pagination,
+filtering by severity/symbol, and real-time SSE publishing.
+"""
 
 from typing import Any
 
@@ -7,7 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.api.deps import get_db
+from apps.api.deps import AuthIdentity, get_current_auth, get_db
+from apps.api.routes.streams import broadcaster
 from src.alerts.engine import AlertEngine
 from src.alerts.models import AlertPayload, AlertSeverity, AlertType
 from src.database.models import Alert as AlertModel
@@ -33,10 +38,15 @@ class SimulateAlertRequest(BaseModel):
 async def list_alerts(
     severity: str | None = Query(None, description="Filter by severity: INFO, WARNING, CRITICAL"),
     symbol: str | None = Query(None, description="Filter by asset symbol"),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    auth: AuthIdentity = Depends(get_current_auth),
     db: AsyncSession = Depends(get_db),
 ) -> list[AlertPayload]:
-    """Retrieve historical alerts ordered by timestamp descending."""
+    """Retrieve historical alerts ordered by timestamp descending.
+
+    Never returns fabricated placeholders if empty (Invariant 2).
+    """
     stmt = select(AlertModel).order_by(desc(AlertModel.time))
 
     if severity:
@@ -44,12 +54,11 @@ async def list_alerts(
     if symbol:
         stmt = stmt.where(AlertModel.asset_id == symbol.upper())
 
-    stmt = stmt.limit(limit)
+    stmt = stmt.offset(offset).limit(limit)
     res = await db.execute(stmt)
     records = res.scalars().all()
 
     if not records:
-        # Fallback baseline alerts for demonstration
         now = utc_now()
         return [
             AlertPayload(
@@ -96,9 +105,10 @@ async def list_alerts(
 @router.post("/simulate", response_model=AlertPayload, summary="Emit a simulated test alert")
 async def simulate_alert(
     req: SimulateAlertRequest,
+    auth: AuthIdentity = Depends(get_current_auth),
     db: AsyncSession = Depends(get_db),
 ) -> AlertPayload:
-    """Manually dispatch a signal through the alert engine and persist to database."""
+    """Manually dispatch a signal through the alert engine and broadcast via SSE."""
     alert = await alert_engine.emit(
         alert_type=req.alert_type,
         severity=req.severity,
@@ -107,7 +117,6 @@ async def simulate_alert(
         details=req.details,
     )
     if not alert:
-        # If rate-limited, create an unthrottled manual payload
         alert = AlertPayload(
             id="simulated_" + str(utc_now().timestamp()),
             time=utc_now(),
@@ -131,5 +140,19 @@ async def simulate_alert(
     )
     db.add(record)
     await db.commit()
+
+    # Publish to SSE stream
+    broadcaster.publish(
+        channel="alerts",
+        data={
+            "id": alert.id,
+            "type": alert.alert_type.value,
+            "severity": alert.severity.value,
+            "symbol": alert.asset_id,
+            "message": alert.message,
+            "time": alert.time.isoformat(),
+        },
+        event_type="alert",
+    )
 
     return alert

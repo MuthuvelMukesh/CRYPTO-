@@ -1,5 +1,7 @@
 """Ingestion pipeline coordinator for asset seeding, OHLCV ingestion, and DB storage — v2.0."""
 
+from typing import Any
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 

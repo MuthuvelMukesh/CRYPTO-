@@ -27,6 +27,7 @@ class PaperOrderStatus(StrEnum):
     """Order lifecycle status."""
 
     PENDING = "PENDING"
+    OPEN = "OPEN"
     FILLED = "FILLED"
     REJECTED = "REJECTED"
     CANCELLED = "CANCELLED"

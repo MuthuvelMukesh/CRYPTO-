@@ -226,15 +226,69 @@ def calculate_trade_metrics(trades: Sequence[BacktestTradeRecord]) -> dict[str, 
     }
 
 
+TIMEFRAME_PERIODS_PER_YEAR: dict[str, int] = {
+    "1m": 525600,
+    "3m": 175200,
+    "5m": 105120,
+    "15m": 35040,
+    "30m": 17520,
+    "1h": 8760,
+    "2h": 4380,
+    "4h": 2190,
+    "6h": 1460,
+    "8h": 1095,
+    "12h": 730,
+    "1d": 365,
+    "d": 365,
+    "daily": 365,
+    "1w": 52,
+    "w": 52,
+    "weekly": 52,
+}
+
+
+def periods_per_year_from_timeframe(timeframe: str | None = None, default: int = 365) -> int:
+    """Derive annual periods count from candle timeframe string (e.g. 1h -> 8760, 1d -> 365)."""
+    if not timeframe:
+        return default
+    return TIMEFRAME_PERIODS_PER_YEAR.get(timeframe.lower().strip(), default)
+
+
 def compute_complete_metrics(
     equity_curve: list[EquityPoint],
     trades: list[BacktestTradeRecord],
     start_date: datetime,
     end_date: datetime,
+    timeframe: str | None = None,
+    periods_per_year: int | None = None,
 ) -> dict[str, Any]:
     """Calculate comprehensive performance, risk, and attribution metrics for backtest."""
     if not equity_curve:
         return {}
+
+    # Resolve annualization periods per year
+    if periods_per_year is None:
+        if timeframe is not None:
+            periods_per_year = periods_per_year_from_timeframe(timeframe)
+        elif len(equity_curve) >= 2:
+            deltas = [
+                (equity_curve[i].time - equity_curve[i - 1].time).total_seconds()
+                for i in range(1, len(equity_curve))
+            ]
+            median_delta = float(np.median(deltas)) if deltas else 86400.0
+            if median_delta > 0:
+                if abs(median_delta - 3600.0) < 60:
+                    periods_per_year = 8760
+                elif abs(median_delta - 86400.0) < 300:
+                    periods_per_year = 365
+                elif abs(median_delta - 14400.0) < 120:
+                    periods_per_year = 2190
+                else:
+                    periods_per_year = max(1, int(round((365.25 * 86400.0) / median_delta)))
+            else:
+                periods_per_year = 365
+        else:
+            periods_per_year = 365
 
     initial_equity = equity_curve[0].equity
     final_equity = equity_curve[-1].equity
@@ -255,9 +309,9 @@ def compute_complete_metrics(
         daily_returns.append(ret)
 
     cagr = calculate_cagr(initial_equity, final_equity, start_date, end_date)
-    volatility = calculate_annualized_volatility(daily_returns)
-    sharpe = calculate_sharpe_ratio(daily_returns)
-    sortino = calculate_sortino_ratio(daily_returns)
+    volatility = calculate_annualized_volatility(daily_returns, periods_per_year=periods_per_year)
+    sharpe = calculate_sharpe_ratio(daily_returns, periods_per_year=periods_per_year)
+    sortino = calculate_sortino_ratio(daily_returns, periods_per_year=periods_per_year)
     max_dd, _, _ = calculate_max_drawdown(equity_values)
     calmar = calculate_calmar_ratio(cagr, max_dd)
 
@@ -296,7 +350,87 @@ def compute_complete_metrics(
         "calmar_ratio": round(calmar, 2),
         "beta": round(beta, 2),
         "alpha_pct": round(alpha_pct, 2),
+        "periods_per_year": periods_per_year,
     }
 
     metrics.update(trade_stats)
     return metrics
+
+
+def compute_regime_split_metrics(
+    equity_curve: list[EquityPoint],
+    trades: list[BacktestTradeRecord],
+    regime_by_time: dict[datetime, str] | None = None,
+    periods_per_year: int = 365,
+) -> dict[str, Any]:
+    """Calculate backtest performance, risk, and trade statistics partitioned by market regime."""
+    if not equity_curve or not regime_by_time:
+        return {}
+
+    # Map each bar to its regime
+    regime_groups: dict[str, list[float]] = {}
+    total_bars = max(1, len(equity_curve) - 1)
+
+    # Returns per bar
+    for i in range(1, len(equity_curve)):
+        pt = equity_curve[i]
+        prev_pt = equity_curve[i - 1]
+        regime = regime_by_time.get(pt.time, "NEUTRAL")
+        ret = (pt.equity - prev_pt.equity) / prev_pt.equity if prev_pt.equity > 0 else 0.0
+
+        if regime not in regime_groups:
+            regime_groups[regime] = []
+        regime_groups[regime].append(ret)
+
+    # Partition trades by entry time regime
+    trades_by_regime: dict[str, list[BacktestTradeRecord]] = {}
+    for t in trades:
+        regime = regime_by_time.get(t.entry_time, "NEUTRAL")
+        if regime not in trades_by_regime:
+            trades_by_regime[regime] = []
+        trades_by_regime[regime].append(t)
+
+    result: dict[str, Any] = {}
+    all_regimes = sorted(set(list(regime_groups.keys()) + list(trades_by_regime.keys())))
+
+    for reg in all_regimes:
+        rets = regime_groups.get(reg, [])
+        reg_trades = trades_by_regime.get(reg, [])
+
+        duration_pct = round((len(rets) / total_bars) * 100.0, 2)
+
+        # Cumulative return during regime
+        if rets:
+            cum_factor = float(np.prod([1.0 + r for r in rets]))
+            ret_pct = round((cum_factor - 1.0) * 100.0, 2)
+            vol = calculate_annualized_volatility(rets, periods_per_year=periods_per_year)
+            sr = calculate_sharpe_ratio(rets, periods_per_year=periods_per_year)
+            cum_eq = np.cumprod([1.0 + r for r in rets])
+            peak = np.maximum.accumulate(cum_eq)
+            dd = (peak - cum_eq) / peak
+            max_dd = round(float(np.max(dd)) * 100.0, 2) if len(dd) > 0 else 0.0
+        else:
+            ret_pct = 0.0
+            vol = 0.0
+            sr = 0.0
+            max_dd = 0.0
+
+        n_trades = len(reg_trades)
+        wins = [t.pnl_usd for t in reg_trades if t.pnl_usd > 0]
+        win_rate = round((len(wins) / n_trades) * 100.0, 2) if n_trades > 0 else 0.0
+        tot_pnl = round(sum(t.pnl_usd for t in reg_trades), 2)
+
+        result[reg] = {
+            "regime": reg,
+            "duration_pct": duration_pct,
+            "bars_count": len(rets),
+            "return_pct": ret_pct,
+            "annualized_volatility": vol,
+            "sharpe_ratio": round(sr, 2),
+            "max_drawdown_pct": max_dd,
+            "trades_count": n_trades,
+            "win_rate": win_rate,
+            "total_pnl_usd": tot_pnl,
+        }
+
+    return result

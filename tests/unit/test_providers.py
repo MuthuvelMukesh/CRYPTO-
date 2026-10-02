@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.config.constants import Timeframe
 from src.ingestion.providers.ccxt_provider import CCXTProvider
 from src.ingestion.providers.coingecko_provider import CoinGeckoProvider
 

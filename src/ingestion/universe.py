@@ -4,13 +4,13 @@ Replaces the hard-coded 8-asset list with a market-driven discovery system.
 Assets are qualified by volume, liquidity, and data freshness criteria.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.config.constants import AssetClass, DataMode, ListingStatus
+from src.config.constants import AssetClass, DataMode
 from src.config.settings import get_settings
 from src.database.models import Asset, Exchange, Market, UniverseSnapshot
 from src.ingestion.pipeline import DEFAULT_UNIVERSE
@@ -261,3 +261,28 @@ def _guess_sector(symbol: str) -> str:
         "PEPE": "Meme",
     }
     return sectors.get(symbol, "Altcoin")
+
+
+async def get_point_in_time_universe(
+    session: AsyncSession,
+    as_of: datetime,
+    exchange_id: str | None = None,
+) -> list[str]:
+    """Retrieve assets that were active and not delisted as of a historical point in time.
+
+    Mitigates survivorship bias by ensuring historical backtests only trade assets
+    that were actually listed and tradable at that point in time.
+    """
+    stmt = select(Asset.id).where(
+        Asset.created_at <= as_of,
+        (Asset.delisted_at.is_(None)) | (Asset.delisted_at > as_of),
+    )
+    res = await session.execute(stmt)
+    assets = list(res.scalars().all())
+
+    # Fallback to bootstrap assets if DB has no historical entries yet
+    if not assets:
+        assets = [a["id"] for a in DEFAULT_UNIVERSE]
+
+    return assets
+

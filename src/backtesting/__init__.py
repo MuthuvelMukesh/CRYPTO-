@@ -1,5 +1,4 @@
-"""Quantitative backtesting and research engine namespace."""
-
+from src.backtesting.cost_stress import CostStressScenario, run_cost_stress_test
 from src.backtesting.engine import BacktestEngine
 from src.backtesting.execution import ExecutionSimulator
 from src.backtesting.metrics import (
@@ -43,6 +42,7 @@ __all__ = [
     "BacktestResult",
     "BacktestTradeRecord",
     "BaseStrategy",
+    "CostStressScenario",
     "EquityPoint",
     "ExecutionSimulator",
     "FactorRankStrategy",
@@ -67,4 +67,5 @@ __all__ = [
     "calculate_trade_metrics",
     "compute_complete_metrics",
     "get_strategy",
+    "run_cost_stress_test",
 ]

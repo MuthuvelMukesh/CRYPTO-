@@ -4,7 +4,7 @@ from enum import StrEnum
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ─────────────────────────────────────────────
@@ -84,6 +84,20 @@ class Settings(BaseSettings):
     # Comma-separated list: "https://dashboard.example.com,http://localhost:8501"
     CORS_ALLOWED_ORIGINS: str = "http://localhost:8501,http://127.0.0.1:8501"
 
+    # ── Authentication & Security ─────────────────────────────────────────────
+    SECRET_KEY: str = Field(
+        default="dev-insecure-secret-key-change-in-production-min-32-chars",
+        description="Secret key for JWT signature and CSRF tokens",
+    )
+    API_KEYS: str = Field(
+        default="dev-api-key-researcher-1,dev-api-key-system",
+        description="Comma-separated list of authorized API keys for programmatic access",
+    )
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+    API_RATE_LIMIT_PER_MINUTE: int = 120
+    CSRF_PROTECTION_ENABLED: bool = True
+
     # ── API & Dashboard ───────────────────────────────────────────────────────
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
@@ -99,6 +113,12 @@ class Settings(BaseSettings):
     MARKET_DATA_STALE_THRESHOLD_SECONDS: int = 60
     # Maximum age before the scanner ranking itself is flagged STALE
     SCANNER_STALE_THRESHOLD_SECONDS: int = 120
+
+    # ── Phase 3 Ingestion Hardening ──────────────────────────────────────────
+    WS_HEARTBEAT_TIMEOUT: int = 30
+    EXCHANGE_FAILOVER_COOLDOWN_SECONDS: int = 900  # 15 minutes
+    EXCHANGE_FALLBACK_ORDER: str = "binance,coinbase,kraken"
+    RATE_LIMIT_429_BACKOFF_SECONDS: int = 60
 
     # ── Paper Trading Defaults ────────────────────────────────────────────────
     PAPER_INITIAL_CAPITAL: float = 100_000.0
@@ -157,6 +177,32 @@ class Settings(BaseSettings):
     @property
     def public_exchanges_list(self) -> list[str]:
         return [ex.strip() for ex in self.PUBLIC_EXCHANGES.split(",") if ex.strip()]
+
+    @property
+    def exchange_fallback_order_list(self) -> list[str]:
+        return [ex.strip() for ex in self.EXCHANGE_FALLBACK_ORDER.split(",") if ex.strip()]
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        """Fail fast in production if default or weak secrets are used."""
+        if self.ENVIRONMENT == "production":
+            weak_secrets = {
+                "change-me",
+                "dev-secret",
+                "secret",
+                "dev-insecure-secret-key-change-in-production-min-32-chars",
+                "",
+            }
+            if self.SECRET_KEY in weak_secrets or len(self.SECRET_KEY) < 32:
+                raise ValueError(
+                    "Insecure or default SECRET_KEY in production environment. "
+                    "Must be set to a cryptographically secure string of at least 32 characters."
+                )
+        return self
+
+    @property
+    def api_keys_list(self) -> list[str]:
+        return [k.strip() for k in self.API_KEYS.split(",") if k.strip()]
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:

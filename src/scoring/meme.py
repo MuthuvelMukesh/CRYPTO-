@@ -11,7 +11,11 @@ from src.scoring.base import (
     clamp,
     normalize_linear,
     normalize_ratio,
+    redistribute_weights,
+    winsorize,
 )
+
+MEME_MODEL_VERSION = "v3.0.0"
 
 DEFAULT_MEME_WEIGHTS = {
     "momentum": 0.25,
@@ -44,75 +48,105 @@ class MemeScorer(BaseScorer):
         holder_metrics: Any | None = None,
         weights: dict[str, float] | None = None,
     ) -> ScoreCard:
-        w = {**DEFAULT_MEME_WEIGHTS, **(weights or {})}
+        w_base = {**DEFAULT_MEME_WEIGHTS, **(weights or {})}
+        missing_inputs: list[str] = []
 
-        # 1. Short-Term Momentum (0-100)
-        # Meme coins trade on rapid 1D & 3D price velocity and acceleration
-        r1 = normalize_linear(getattr(features, "return_1d", None), -0.20, 0.40)
-        r3 = normalize_linear(getattr(features, "return_3d", None), -0.30, 0.80)
-        acc = normalize_linear(getattr(features, "momentum_acceleration", None), -0.25, 0.35)
+        # 1. Short-Term Momentum (0-100) with Winsorization
+        r1_val = winsorize(getattr(features, "return_1d", None), -0.60, 1.50)
+        r3_val = winsorize(getattr(features, "return_3d", None), -0.80, 3.00)
+        acc_val = winsorize(getattr(features, "momentum_acceleration", None), -0.60, 0.60)
+
+        r1 = normalize_linear(r1_val, -0.20, 0.40)
+        r3 = normalize_linear(r3_val, -0.30, 0.80)
+        acc = normalize_linear(acc_val, -0.25, 0.35)
         momentum_score = clamp((r1 * 0.35) + (r3 * 0.45) + (acc * 0.20))
 
         # 2. Volume Acceleration (0-100)
-        rvol = normalize_linear(getattr(features, "volume_to_20d_avg", None), 0.8, 5.0)
-        vacc = normalize_linear(getattr(features, "volume_acceleration", None), 0.9, 3.0)
+        rvol_val = winsorize(getattr(features, "volume_to_20d_avg", None), 0.1, 25.0)
+        vacc_val = winsorize(getattr(features, "volume_acceleration", None), 0.2, 12.0)
+        rvol = normalize_linear(rvol_val, 0.8, 5.0)
+        vacc = normalize_linear(vacc_val, 0.9, 3.0)
         volume_acc_score = clamp((rvol * 0.40) + (vacc * 0.60))
 
         # 3. Liquidity & Spread (0-100)
-        spread_s = normalize_linear(getattr(features, "spread_est_bps", None), 10.0, 150.0, inverted=True)
-        turnover_s = normalize_linear(getattr(features, "turnover_ratio", None), 0.10, 1.0)
+        spread_val = winsorize(getattr(features, "spread_est_bps", None), 1.0, 500.0)
+        turnover_val = winsorize(getattr(features, "turnover_ratio", None), 0.001, 3.0)
+        spread_s = normalize_linear(spread_val, 10.0, 150.0, inverted=True)
+        turnover_s = normalize_linear(turnover_val, 0.10, 1.0)
         liquidity_score = clamp((spread_s * 0.60) + (turnover_s * 0.40))
 
         # 4. Relative Strength vs BTC (0-100)
-        rs_btc = normalize_linear(getattr(features, "rs_btc_30d", None), -0.35, 0.70)
-        relative_strength_score = clamp(rs_btc)
-
-        # 5. Holder Structure & Distribution (0-100)
-        if holder_metrics and getattr(holder_metrics, "holder_count", 0) > 0:
-            growth = normalize_linear(getattr(holder_metrics, "holder_growth_24h_pct", None), 0.0, 15.0)
-            conc = normalize_linear(getattr(holder_metrics, "top_10_holders_pct", None), 15.0, 75.0, inverted=True)
-            holder_score = clamp((growth * 0.65) + (conc * 0.35))
+        rs_btc_val = winsorize(getattr(features, "rs_btc_30d", None), -0.80, 2.00)
+        if rs_btc_val is None:
+            missing_inputs.append("relative_strength")
+            relative_strength_score = 0.0
         else:
-            holder_score = 45.0  # Slightly penalize if holder data is unverified
+            rs_btc = normalize_linear(rs_btc_val, -0.35, 0.70)
+            relative_strength_score = clamp(rs_btc)
 
-        # 6. Attention / Social (0-100)
-        # Social volume & sentiment if available
-        attention_score = 50.0
+        # 5. Holder Structure & Distribution (0-100) - No flat 45.0 baseline!
+        holder_score = 0.0
+        has_holder = False
+        if holder_metrics and getattr(holder_metrics, "holder_count", 0) > 0:
+            growth_val = winsorize(getattr(holder_metrics, "holder_growth_24h_pct", None), -25.0, 100.0)
+            conc_val = winsorize(getattr(holder_metrics, "top_10_holders_pct", None), 0.0, 100.0)
+            growth = normalize_linear(growth_val, 0.0, 15.0)
+            conc = normalize_linear(conc_val, 15.0, 75.0, inverted=True)
+            holder_score = clamp((growth * 0.65) + (conc * 0.35))
+            has_holder = True
+        else:
+            missing_inputs.append("holder_structure")
+
+        # 6. Attention / Social (0-100) - No flat 50.0 baseline!
+        social_volume = getattr(features, "social_volume_24h", None)
+        attention_score = 0.0
+        if social_volume is not None:
+            attention_score = normalize_linear(winsorize(float(social_volume), 0.0, 100000.0), 100.0, 10000.0)
+        else:
+            missing_inputs.append("attention_social")
 
         # 7. Volatility / Risk Base (0-100)
-        realized_vol = normalize_linear(getattr(features, "realized_vol_30d", None), 1.0, 3.5, inverted=True)
+        realized_vol_val = winsorize(getattr(features, "realized_vol_30d", None), 0.1, 6.0)
+        realized_vol = normalize_linear(realized_vol_val, 1.0, 3.5, inverted=True)
         risk_score = clamp(realized_vol)
 
         # Trend score
-        ema20_s = normalize_ratio(getattr(features, "ema20_ratio", None), 1.0, 0.15)
+        ema20_val = winsorize(getattr(features, "ema20_ratio", None), 0.30, 3.0)
+        ema20_s = normalize_ratio(ema20_val, 1.0, 0.15)
         trend_score = clamp(ema20_s)
 
-        quality_score = clamp((liquidity_score * 0.45) + (holder_score * 0.35) + (trend_score * 0.20))
+        # Dynamic weight redistribution
+        all_potential_factors = ["momentum", "volume_acceleration", "liquidity", "relative_strength", "holder_structure", "attention_social", "risk"]
+        active_factors = [f for f in all_potential_factors if f not in missing_inputs]
+        partial_data = len(missing_inputs) > 0
+        w = redistribute_weights(w_base, active_factors)
 
-        # Components
-        components = {
-            "momentum": FactorContribution(
-                name="momentum", score=momentum_score, weight=w["momentum"], contribution=momentum_score * w["momentum"]
-            ),
-            "volume_acceleration": FactorContribution(
-                name="volume_acceleration", score=volume_acc_score, weight=w["volume_acceleration"], contribution=volume_acc_score * w["volume_acceleration"]
-            ),
-            "liquidity": FactorContribution(
-                name="liquidity", score=liquidity_score, weight=w["liquidity"], contribution=liquidity_score * w["liquidity"]
-            ),
-            "relative_strength": FactorContribution(
-                name="relative_strength", score=relative_strength_score, weight=w["relative_strength"], contribution=relative_strength_score * w["relative_strength"]
-            ),
-            "holder_structure": FactorContribution(
-                name="holder_structure", score=holder_score, weight=w["holder_structure"], contribution=holder_score * w["holder_structure"]
-            ),
-            "attention_social": FactorContribution(
-                name="attention_social", score=attention_score, weight=w["attention_social"], contribution=attention_score * w["attention_social"]
-            ),
-            "risk": FactorContribution(
-                name="risk", score=risk_score, weight=w["risk"], contribution=risk_score * w["risk"]
-            ),
+        # Quality score
+        if has_holder:
+            quality_score = clamp((liquidity_score * 0.45) + (holder_score * 0.35) + (trend_score * 0.20))
+        else:
+            quality_score = clamp((liquidity_score * 0.65) + (trend_score * 0.35))
+
+        factor_scores = {
+            "momentum": momentum_score,
+            "volume_acceleration": volume_acc_score,
+            "liquidity": liquidity_score,
+            "relative_strength": relative_strength_score,
+            "holder_structure": holder_score,
+            "attention_social": attention_score,
+            "risk": risk_score,
         }
+
+        components: dict[str, FactorContribution] = {}
+        for f in all_potential_factors:
+            score_val = factor_scores[f]
+            weight_val = w.get(f, 0.0)
+            components[f] = FactorContribution(
+                name=f,
+                score=score_val,
+                weight=round(weight_val, 4),
+                contribution=round(score_val * weight_val, 2),
+            )
 
         # Rigorous Meme Risk Flag & Penalty Matrix
         penalties: list[PenaltyDeduction] = []
@@ -175,6 +209,9 @@ class MemeScorer(BaseScorer):
             components=components,
             penalties=penalties,
             risk_flags=risk_flags,
+            partial_data=partial_data,
+            missing_inputs=missing_inputs,
+            model_version=MEME_MODEL_VERSION,
         )
         card.explainability_summary = card.generate_summary()
         return card

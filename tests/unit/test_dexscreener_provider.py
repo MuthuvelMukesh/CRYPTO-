@@ -40,7 +40,8 @@ async def test_dexscreener_parse_raw_pair() -> None:
 @pytest.mark.asyncio
 async def test_dexscreener_network_error_raises() -> None:
     """In v2.0, network failures must raise ExternalProviderUnavailableError."""
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import patch
+
     from src.config.exceptions import ExternalProviderUnavailableError
 
     provider = DexScreenerProvider()

@@ -68,7 +68,7 @@ def calculate_volatility_features(
     p90 = min(n, int(90 * candles_per_day))
     max_dd_90d: float | None = None
     if p90 >= 20:
-        max_dd, _, _ = calculate_max_drawdown(c_arr[-p90:])
+        max_dd, _, _ = calculate_max_drawdown(c_arr[-p90:].tolist())
         max_dd_90d = float(max_dd)
 
     return VolatilityMetrics(

@@ -72,10 +72,6 @@ class DexScreenerProvider:
     async def _get_client(self) -> httpx.AsyncClient:
         return self.client
 
-    async def close(self) -> None:
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
-
     async def search_pairs(self, query: str) -> list[DexPairMetrics]:
         """Search DEX pairs matching a symbol or token address.
 

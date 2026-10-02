@@ -104,28 +104,52 @@ class ExecutionSimulator:
         entry_price: float,
         candle_high: float,
         candle_low: float,
+        candle_open: float | None = None,
         stop_loss_pct: float | None = None,
         take_profit_pct: float | None = None,
+        intrabar_order: str = "stop_first",
     ) -> tuple[str, float] | None:
         """Check if intra-candle high or low triggered a stop loss or take profit.
 
-        For LONG positions:
-        - Stop Loss triggered if candle_low <= entry_price * (1 - stop_loss_pct)
-        - Take Profit triggered if candle_high >= entry_price * (1 + take_profit_pct)
+        Args:
+            entry_price: Original fill price of the open position.
+            candle_high: High price of the current bar.
+            candle_low: Low price of the current bar.
+            candle_open: Optional open price of the current bar used for gap-beyond-trigger fills.
+            stop_loss_pct: Stop loss fraction (e.g. 0.08 for 8%).
+            take_profit_pct: Take profit fraction (e.g. 0.20 for 20%).
+            intrabar_order: Ordering assumption when both SL and TP are breached in the same bar.
+                Defaults to 'stop_first' (conservative risk assumption). May also be 'tp_first'.
+
+        Returns:
+            Tuple of (trigger_reason, fill_price) where:
+            - If bar opens beyond stop price: stop fill = min(open, stop_price)
+            - If bar opens beyond TP price: take profit fill = max(open, tp_price)
+            - Otherwise filled at the exact trigger price.
+            Returns None if neither trigger is breached.
         """
         if entry_price <= 0:
             return None
 
-        # Check Stop Loss first (conservative risk management assumption)
+        sl_trigger: tuple[str, float] | None = None
         if stop_loss_pct is not None and stop_loss_pct > 0:
             sl_price = entry_price * (1.0 - stop_loss_pct)
             if candle_low <= sl_price:
-                # Filled at SL threshold price
-                return ("STOP_LOSS", sl_price)
+                # If bar opens below stop, fill at open (min(open, stop_price)); otherwise fill at stop_price
+                fill_price = min(candle_open, sl_price) if candle_open is not None else sl_price
+                sl_trigger = ("STOP_LOSS", fill_price)
 
+        tp_trigger: tuple[str, float] | None = None
         if take_profit_pct is not None and take_profit_pct > 0:
             tp_price = entry_price * (1.0 + take_profit_pct)
             if candle_high >= tp_price:
-                return ("TAKE_PROFIT", tp_price)
+                # If bar opens above take profit, fill at open (max(open, tp_price)); otherwise fill at tp_price
+                fill_price = max(candle_open, tp_price) if candle_open is not None else tp_price
+                tp_trigger = ("TAKE_PROFIT", fill_price)
 
-        return None
+        if sl_trigger and tp_trigger:
+            if intrabar_order == "tp_first":
+                return tp_trigger
+            return sl_trigger
+
+        return sl_trigger or tp_trigger

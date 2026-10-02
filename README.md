@@ -57,7 +57,8 @@ User sees: real scores + freshness indicators + data mode banner
 ### 1. Install dependencies
 
 ```bash
-pip install -r requirements.txt
+# Editable install with dev and research dependencies
+pip install -e ".[dev,research]"
 ```
 
 ### 2. Configure environment

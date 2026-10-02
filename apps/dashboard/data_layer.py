@@ -11,13 +11,12 @@ import concurrent.futures
 from datetime import UTC, datetime
 
 import pandas as pd
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 
-from src.database.models import OHLCV, Asset, Feature, Score
+from src.database.models import OHLCV, Asset, Feature, Market, Score
 from src.database.session import get_session_factory, init_db
 from src.features.market_regime import classify_market_regime
 from src.ingestion.pipeline import seed_default_universe
-
 
 
 def run_async(coro):
@@ -52,62 +51,115 @@ class DashboardDataLayer:
 
     @classmethod
     def get_scanner_data(cls) -> pd.DataFrame:
-        """Retrieve full scanner dataset with scores, price changes, and risk flags."""
+        """Retrieve full scanner dataset with scores, price changes, and risk flags using a single unified query."""
         async def _query():
             cls.ensure_seeded_data()
             factory = get_session_factory()
             async with factory() as session:
-                query = (
-                    select(Score, Asset)
-                    .join(Asset, Score.asset_id == Asset.id)
-                    .order_by(desc(Score.opportunity_score))
+                score_sub = (
+                    select(
+                        Score.asset_id,
+                        Score.opportunity_score,
+                        Score.quality_score,
+                        Score.risk_score,
+                        Score.trend_score,
+                        Score.momentum_score,
+                        Score.relative_strength_score,
+                        Score.liquidity_score,
+                        Score.risk_flags,
+                        Score.model_type,
+                        Score.breakdown_json,
+                        Score.time.label("score_time"),
+                        func.row_number().over(
+                            partition_by=Score.asset_id,
+                            order_by=desc(Score.time),
+                        ).label("rn"),
+                    ).subquery()
                 )
-                res = await session.execute(query)
+
+                feat_sub = (
+                    select(
+                        Feature.asset_id,
+                        Feature.return_1d,
+                        Feature.return_7d,
+                        Feature.return_30d,
+                        func.row_number().over(
+                            partition_by=Feature.asset_id,
+                            order_by=desc(Feature.time),
+                        ).label("rn"),
+                    )
+                    .where(Feature.timeframe == "1h")
+                    .subquery()
+                )
+
+                ohlcv_sub = (
+                    select(
+                        OHLCV.market_id,
+                        OHLCV.close,
+                        func.row_number().over(
+                            partition_by=OHLCV.market_id,
+                            order_by=desc(OHLCV.time),
+                        ).label("rn"),
+                    ).subquery()
+                )
+
+                stmt = (
+                    select(
+                        Asset.symbol,
+                        Asset.name,
+                        Asset.asset_class,
+                        Asset.primary_sector,
+                        score_sub.c.opportunity_score,
+                        score_sub.c.quality_score,
+                        score_sub.c.risk_score,
+                        score_sub.c.trend_score,
+                        score_sub.c.momentum_score,
+                        score_sub.c.relative_strength_score,
+                        score_sub.c.liquidity_score,
+                        score_sub.c.risk_flags,
+                        score_sub.c.model_type,
+                        score_sub.c.breakdown_json,
+                        feat_sub.c.return_1d,
+                        feat_sub.c.return_7d,
+                        feat_sub.c.return_30d,
+                        ohlcv_sub.c.close.label("latest_price"),
+                    )
+                    .outerjoin(score_sub, (Asset.id == score_sub.c.asset_id) & (score_sub.c.rn == 1))
+                    .outerjoin(feat_sub, (Asset.id == feat_sub.c.asset_id) & (feat_sub.c.rn == 1))
+                    .outerjoin(Market, (Market.asset_id == Asset.id) & (Market.is_active.is_(True)))
+                    .outerjoin(ohlcv_sub, (ohlcv_sub.c.market_id == Market.id) & (ohlcv_sub.c.rn == 1))
+                    .order_by(desc(score_sub.c.opportunity_score))
+                )
+
+                res = await session.execute(stmt)
                 rows = res.all()
 
                 data: list[dict] = []
-                for score_obj, asset_obj in rows:
-                    # Get latest price and features
-                    feat_res = await session.execute(
-                        select(Feature)
-                        .where(Feature.asset_id == asset_obj.id, Feature.timeframe == "1h")
-                        .order_by(desc(Feature.time))
-                        .limit(1)
-                    )
-                    feat = feat_res.scalar_one_or_none()
-
-                    ohlcv_res = await session.execute(
-                        select(OHLCV.close)
-                        .where(OHLCV.market_id == f"binance:{asset_obj.id}/USDT")
-                        .order_by(desc(OHLCV.time))
-                        .limit(1)
-                    )
-                    last_price = ohlcv_res.scalar_one_or_none() or 0.0
-
-                    r1 = getattr(feat, "return_1d", 0.0) or 0.0
-                    r7 = getattr(feat, "return_7d", 0.0) or 0.0
-                    r30 = getattr(feat, "return_30d", 0.0) or 0.0
+                for r in rows:
+                    r1 = getattr(r, "return_1d", 0.0) or 0.0
+                    r7 = getattr(r, "return_7d", 0.0) or 0.0
+                    r30 = getattr(r, "return_30d", 0.0) or 0.0
 
                     data.append({
-                        "Symbol": asset_obj.symbol,
-                        "Name": asset_obj.name,
-                        "Class": asset_obj.asset_class,
-                        "Sector": asset_obj.primary_sector,
-                        "Price": last_price,
+                        "Symbol": r.symbol,
+                        "Name": r.name,
+                        "Class": r.asset_class,
+                        "Sector": r.primary_sector,
+                        "Price": float(r.latest_price) if r.latest_price is not None else 0.0,
                         "1D %": round(r1 * 100.0, 2),
                         "7D %": round(r7 * 100.0, 2),
                         "30D %": round(r30 * 100.0, 2),
-                        "Opportunity": score_obj.opportunity_score,
-                        "Momentum": score_obj.momentum_score,
-                        "Relative Strength": score_obj.relative_strength_score,
-                        "Trend": score_obj.trend_score,
-                        "Volume": getattr(score_obj, "volume_score", 50.0) or 50.0,
-                        "Quality": score_obj.quality_score,
-                        "Risk": score_obj.risk_score,
-                        "Liquidity": score_obj.liquidity_score,
-                        "Risk Flags": score_obj.risk_flags or [],
-                        "Model": score_obj.model_type,
-                        "Breakdown": score_obj.breakdown_json,
+                        "Opportunity": r.opportunity_score if r.opportunity_score is not None else 0.0,
+                        "Momentum": r.momentum_score if r.momentum_score is not None else 0.0,
+                        "Relative Strength": r.relative_strength_score if r.relative_strength_score is not None else 0.0,
+                        "Trend": r.trend_score if r.trend_score is not None else 0.0,
+                        "Volume": 50.0,
+                        "Quality": r.quality_score if r.quality_score is not None else 0.0,
+                        "Risk": r.risk_score if r.risk_score is not None else 0.0,
+                        "Liquidity": r.liquidity_score if r.liquidity_score is not None else 0.0,
+                        "Risk Flags": r.risk_flags or [],
+                        "Model": r.model_type or "CORE",
+                        "Breakdown": r.breakdown_json or {},
                     })
 
                 return pd.DataFrame(data)

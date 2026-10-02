@@ -7,9 +7,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Create unprivileged system user and group (non-root container execution)
+RUN groupadd -g 10001 appgroup && \
+    useradd -u 10001 -g appgroup -s /bin/bash -m appuser
+
 COPY pyproject.toml .
 RUN pip install --no-cache-dir -e .
 
 COPY . .
+
+# Transfer directory ownership to unprivileged user
+RUN chown -R appuser:appgroup /app
+
+USER appuser
 
 CMD ["python", "-m", "src.ingestion.scheduler"]

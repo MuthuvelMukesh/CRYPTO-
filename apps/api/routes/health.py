@@ -13,11 +13,13 @@ from fastapi import APIRouter, status
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 
+from src.backtesting.job_manager import get_job_manager
 from src.config.constants import HealthStatus
 from src.config.settings import get_settings
 from src.database.cache import CacheService
 from src.database.models import OHLCV, Asset
 from src.database.session import check_db_health, get_session_factory
+from src.observability.metrics import get_prometheus_metrics_response
 from src.utils.time import utc_now
 
 router = APIRouter(tags=["Health & Diagnostics"])
@@ -142,6 +144,7 @@ async def get_market_data_freshness() -> dict:
             ct = candle.time
             if ct.tzinfo is None:
                 ct = ct.replace(tzinfo=UTC)
+            age = (now - ct).total_seconds()
             tf_duration_map = {"5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}
             bar_duration = tf_duration_map.get(candle.timeframe, 3600)
             is_fresh = age <= (threshold + bar_duration)
@@ -178,6 +181,67 @@ async def readiness_probe():
 async def liveness_probe():
     """Liveness probe indicating if the service process is active."""
     return {"live": True, "version": settings.APP_VERSION}
+
+
+@router.get("/metrics", summary="Prometheus metrics exposition endpoint")
+async def get_metrics():
+    """Expose Prometheus telemetry metrics."""
+    return get_prometheus_metrics_response()
+
+
+@router.get("/system", summary="Comprehensive platform operational and infrastructure summary")
+async def get_system_summary():
+    """Return complete system state: ingestion lag, scanner status, job queue, and ledger health."""
+    db_health = await check_db_health()
+    cache_health = await CacheService.check_health()
+    market_status = await _check_market_data_freshness()
+    job_mgr = get_job_manager()
+
+    job_counts = {"PENDING": 0, "RUNNING": 0, "COMPLETED": 0, "FAILED": 0, "CANCELLED": 0}
+    for j in job_mgr._jobs.values():
+        job_counts[j.status] = job_counts.get(j.status, 0) + 1
+
+    factory = get_session_factory()
+    now = datetime.now(UTC)
+    exchange_lags: dict[str, float | None] = {}
+
+    try:
+        async with factory() as session:
+            for ex in settings.public_exchanges_list:
+                res = await session.execute(
+                    select(OHLCV.time)
+                    .where(OHLCV.market_id.like(f"{ex}:%"))
+                    .order_by(desc(OHLCV.time))
+                    .limit(1)
+                )
+                t = res.scalar_one_or_none()
+                if t:
+                    if t.tzinfo is None:
+                        t = t.replace(tzinfo=UTC)
+                    exchange_lags[ex] = round((now - t).total_seconds(), 1)
+                else:
+                    exchange_lags[ex] = None
+    except Exception:
+        exchange_lags = dict.fromkeys(settings.public_exchanges_list)
+
+    uptime = (utc_now() - _START_TIME).total_seconds()
+
+    return {
+        "status": "UP" if db_health.get("status") == "healthy" else "DOWN",
+        "app_name": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "environment": settings.ENVIRONMENT,
+        "data_mode": settings.DATA_MODE.value,
+        "live_trading_enabled": settings.LIVE_TRADING_ENABLED,
+        "uptime_seconds": round(uptime, 2),
+        "database": db_health,
+        "cache": cache_health,
+        "market_data_freshness": market_status.value,
+        "ingestion_lag_seconds": exchange_lags,
+        "job_queue": job_counts,
+        "active_exchanges": settings.public_exchanges_list,
+        "timestamp": now.isoformat(),
+    }
 
 
 async def _check_market_data_freshness() -> HealthStatus:

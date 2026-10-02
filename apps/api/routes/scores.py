@@ -44,6 +44,9 @@ class ScoreSummaryResponse(BaseModel):
     liquidity_score: float
     risk_flags: list[str]
     time: str
+    partial_data: bool = False
+    missing_inputs: list[str] = []
+    model_version: str = "v3.0.0"
 
 
 class ScoreDetailResponse(ScoreSummaryResponse):
@@ -76,6 +79,7 @@ async def list_scores(
 
     results: list[ScoreSummaryResponse] = []
     for score_obj, asset_obj in rows:
+        bj = score_obj.breakdown_json or {}
         results.append(
             ScoreSummaryResponse(
                 asset_id=score_obj.asset_id,
@@ -93,6 +97,9 @@ async def list_scores(
                 liquidity_score=score_obj.liquidity_score,
                 risk_flags=score_obj.risk_flags or [],
                 time=score_obj.time.isoformat(),
+                partial_data=bool(bj.get("_partial_data", False)),
+                missing_inputs=list(bj.get("_missing_inputs", [])),
+                model_version=str(bj.get("_model_version", "v3.0.0")),
             )
         )
     return results
@@ -161,6 +168,9 @@ async def get_score_detail(
         liquidity_score=score_obj.liquidity_score,
         risk_flags=score_obj.risk_flags or [],
         time=score_obj.time.isoformat(),
+        partial_data=bool(breakdown.get("_partial_data", False)),
+        missing_inputs=list(breakdown.get("_missing_inputs", [])),
+        model_version=str(breakdown.get("_model_version", "v3.0.0")),
         components=components,
         penalties=penalties,
         explainability_summary=breakdown.get("_summary", ""),

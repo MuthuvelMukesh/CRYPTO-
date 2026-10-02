@@ -8,6 +8,7 @@ from src.database.models.features import Feature
 from src.database.models.ledger import LedgerEvent
 from src.database.models.market_data import (
     OHLCV,
+    ExchangeFailover,
     FundingRate,
     HolderMetric,
     Liquidation,
@@ -38,6 +39,7 @@ __all__ = [
     "BacktestTrade",
     "Base",
     "Exchange",
+    "ExchangeFailover",
     "Feature",
     "FundingRate",
     "HolderMetric",
