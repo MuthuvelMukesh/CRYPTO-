@@ -95,3 +95,26 @@ def test_walk_forward_train_evaluate() -> None:
     assert 0.0 <= report.accuracy <= 1.0
     assert -1.0 <= report.rank_ic <= 1.0
     assert "feat_mom" in report.feature_importances
+
+
+def test_missing_sklearn_raises_clear_error() -> None:
+    """Verify that attempting to use research ML models without scikit-learn produces a clear error."""
+    import builtins
+    from unittest.mock import patch
+
+    import pytest
+
+    from src.research.ml_models import _require_sklearn
+
+    real_import = builtins.__import__
+
+    def mock_import(name, *args, **kwargs):
+        if name.startswith("sklearn"):
+            raise ImportError("No module named 'sklearn'")
+        return real_import(name, *args, **kwargs)
+
+    with patch("builtins.__import__", side_effect=mock_import):
+        with pytest.raises(ImportError) as exc_info:
+            _require_sklearn()
+        assert "scikit-learn is required for research ML models" in str(exc_info.value)
+        assert "crypto-intelligence[research]" in str(exc_info.value)

@@ -12,7 +12,7 @@ tracked universe and their metadata. Required for point-in-time backtesting.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database.models.base import Base

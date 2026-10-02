@@ -19,7 +19,6 @@ from src.features.market_regime import classify_market_regime
 from src.ingestion.pipeline import seed_default_universe
 
 
-
 def run_async(coro):
     """Run an async coroutine safely on a dedicated thread with its own event loop."""
     def _runner():

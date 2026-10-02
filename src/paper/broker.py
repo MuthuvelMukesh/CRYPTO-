@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backtesting.execution import ExecutionSimulator
 from src.backtesting.models import OrderSide, SlippageModelType
-from src.config.constants import LedgerEventType, RiskRejectionCode
+from src.config.constants import LedgerEventType
 from src.config.exceptions import (
     DuplicateOrderError,
     LiveTradingDisabledError,

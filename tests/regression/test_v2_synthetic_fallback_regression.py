@@ -6,7 +6,6 @@ reintroduced in production code paths. Each test verifies a specific DEFECT fix.
 
 import pytest
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 #  DEFECT-2 regression: broker must raise PriceUnavailableError, not return fake price
 # ─────────────────────────────────────────────────────────────────────────────
@@ -92,12 +91,10 @@ class TestDashboardNoSyntheticCandles:
 
     def test_ensure_seeded_data_does_not_insert_ohlcv(self, monkeypatch):
         """After ensure_seeded_data(), no synthetic OHLCV candles should be in the DB."""
+        import inspect
+
         from apps.dashboard.data_layer import DashboardDataLayer
 
-        inserted_objects = []
-
-        # We don't actually run the async function here, but inspect the source
-        import inspect
         source = inspect.getsource(DashboardDataLayer.ensure_seeded_data)
 
         # Regression markers: these strings indicate synthetic candle generation
@@ -117,6 +114,7 @@ class TestDashboardNoSyntheticCandles:
     def test_get_recent_alerts_no_hardcoded_alerts(self):
         """get_recent_alerts() must not return fabricated alert objects."""
         import inspect
+
         from apps.dashboard.data_layer import DashboardDataLayer
 
         source = inspect.getsource(DashboardDataLayer.get_recent_alerts)
@@ -166,6 +164,7 @@ class TestCORSNotWildcard:
 
     def test_cors_is_not_wildcard_with_credentials(self):
         import inspect
+
         from apps.api.main import create_app
 
         source = inspect.getsource(create_app)

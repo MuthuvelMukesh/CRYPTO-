@@ -5,12 +5,12 @@ Exposes the live scanner rankings, data freshness status, and snapshot history.
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Query
 from sqlalchemy import desc, select
 
 from src.config.constants import HealthStatus
 from src.config.settings import get_settings
-from src.database.models import OHLCV, Score, ScannerSnapshot
+from src.database.models import OHLCV, ScannerSnapshot, Score
 from src.database.session import get_session_factory
 
 router = APIRouter(prefix="/api/v1/scanner", tags=["Live Scanner"])

@@ -96,6 +96,7 @@ def create_app() -> FastAPI:
 
     from fastapi import Request
     from fastapi.responses import JSONResponse
+
     from src.config.exceptions import CryptoIntelligenceError
 
     @app.exception_handler(CryptoIntelligenceError)

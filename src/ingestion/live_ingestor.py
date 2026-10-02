@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config.constants import DataMode, Timeframe
 from src.config.exceptions import DataUnavailableError
 from src.config.settings import get_settings
-from src.database.models import OHLCV, Market
+from src.database.models import OHLCV
 from src.database.session import get_session_factory, init_db
 from src.features.pipeline import calculate_and_store_asset_features
 from src.ingestion.pipeline import DEFAULT_UNIVERSE
@@ -99,7 +99,6 @@ async def ingest_candles_for_asset(
         logger.info("ohlcv_validation_warnings", asset=asset_id, count=len(warnings))
 
     saved_count = 0
-    from sqlalchemy import select as sa_select
 
     for c in cleaned:
         candle_dt = to_utc_datetime(c.timestamp_ms)
@@ -226,7 +225,8 @@ async def run_ingestion_cycle(
                     logger.warning("score_computation_failed", error=str(e))
 
     finally:
-        await provider.close()
+        if owns_provider:
+            await provider.close()
 
     result.complete()
     logger.info(
@@ -252,7 +252,6 @@ async def run_continuous_ingestion(
     await init_db()
     exchange = settings.DEFAULT_EXCHANGE
     provider = CCXTProvider(exchange_id=exchange)
-    factory = get_session_factory()
 
     logger.info(
         "continuous_ingestion_started",

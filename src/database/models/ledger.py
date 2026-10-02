@@ -10,7 +10,6 @@ from datetime import datetime
 from sqlalchemy import DateTime, Float, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.config.constants import LedgerEventType
 from src.database.models.base import Base
 from src.utils.time import utc_now
 

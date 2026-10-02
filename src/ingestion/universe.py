@@ -4,13 +4,12 @@ Replaces the hard-coded 8-asset list with a market-driven discovery system.
 Assets are qualified by volume, liquidity, and data freshness criteria.
 """
 
-from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.config.constants import AssetClass, DataMode, ListingStatus
+from src.config.constants import AssetClass, DataMode
 from src.config.settings import get_settings
 from src.database.models import Asset, Exchange, Market, UniverseSnapshot
 from src.ingestion.pipeline import DEFAULT_UNIVERSE

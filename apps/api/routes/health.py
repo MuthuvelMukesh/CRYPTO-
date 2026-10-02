@@ -142,6 +142,7 @@ async def get_market_data_freshness() -> dict:
             ct = candle.time
             if ct.tzinfo is None:
                 ct = ct.replace(tzinfo=UTC)
+            age = (now - ct).total_seconds()
             tf_duration_map = {"5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}
             bar_duration = tf_duration_map.get(candle.timeframe, 3600)
             is_fresh = age <= (threshold + bar_duration)

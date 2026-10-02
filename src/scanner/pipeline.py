@@ -22,11 +22,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config.constants import DataMode, DataQualityStatus
 from src.config.settings import get_settings
-from src.database.models import OHLCV, Score, ScannerSnapshot
+from src.database.models import OHLCV, ScannerSnapshot, Score
 from src.database.session import get_session_factory, init_db
 from src.ingestion.live_ingestor import run_ingestion_cycle
 from src.utils.logging import get_logger
-from src.utils.time import utc_now
 
 logger = get_logger("scanner.pipeline")
 settings = get_settings()

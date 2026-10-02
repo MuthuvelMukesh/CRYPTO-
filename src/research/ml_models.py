@@ -4,9 +4,37 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression, RidgeClassifier
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
+
+try:
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.linear_model import LogisticRegression, RidgeClassifier
+    from sklearn.metrics import (
+        accuracy_score,
+        f1_score,
+        precision_score,
+        recall_score,
+        roc_auc_score,
+    )
+except ImportError:
+    RandomForestClassifier = None  # type: ignore[assignment,misc]
+    LogisticRegression = None  # type: ignore[assignment,misc]
+    RidgeClassifier = None  # type: ignore[assignment,misc]
+    accuracy_score = None  # type: ignore[assignment]
+    f1_score = None  # type: ignore[assignment]
+    precision_score = None  # type: ignore[assignment]
+    recall_score = None  # type: ignore[assignment]
+    roc_auc_score = None  # type: ignore[assignment]
+
+
+def _require_sklearn() -> None:
+    """Ensure scikit-learn is installed for research ML models."""
+    try:
+        import sklearn  # noqa: F401
+    except ImportError as e:
+        raise ImportError(
+            "scikit-learn is required for research ML models. "
+            "Install it via: pip install 'crypto-intelligence[research]' or pip install scikit-learn"
+        ) from e
 
 
 @dataclass
@@ -34,6 +62,7 @@ class QuantitativeMLModel:
         penalty_c: float = 1.0,
         random_state: int = 42,
     ) -> None:
+        _require_sklearn()
         self.model_type = model_type
         self.random_state = random_state
 
@@ -175,6 +204,7 @@ def walk_forward_train_evaluate(
     model_type: str = "logistic_regression",
 ) -> ModelEvaluationReport:
     """Split dataset temporally with an embargo barrier, train model, and evaluate out-of-sample metrics."""
+    _require_sklearn()
     n = len(df)
     train_end = int(n * train_pct)
     test_start = train_end + embargo_bars
