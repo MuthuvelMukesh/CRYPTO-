@@ -112,6 +112,9 @@ async def score_single_asset(
     ]
     breakdown_data["_penalties"] = penalties_data
     breakdown_data["_summary"] = card.explainability_summary
+    breakdown_data["_partial_data"] = card.partial_data
+    breakdown_data["_missing_inputs"] = card.missing_inputs
+    breakdown_data["_model_version"] = card.model_version
 
     if not db_score:
         db_score = Score(

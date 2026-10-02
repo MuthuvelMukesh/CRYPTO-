@@ -68,6 +68,9 @@ class ScannerRankingItem(BaseModel):
     risk_flags: list[str] = Field(default_factory=list)
     model_type: str | None = None
     ranked_at: str | None = None
+    partial_data: bool = False
+    missing_inputs: list[str] = Field(default_factory=list)
+    model_version: str | None = None
 
 
 class ScannerRankingsResponse(BaseModel):
@@ -300,6 +303,7 @@ async def get_scanner_rankings(
         r7 = round(row.return_7d * 100.0, 2) if row.return_7d is not None else None
         r30 = round(row.return_30d * 100.0, 2) if row.return_30d is not None else None
 
+        bj = row.breakdown_json if isinstance(row.breakdown_json, dict) else {}
         items.append(
             ScannerRankingItem(
                 rank=len(items) + 1,
@@ -321,6 +325,9 @@ async def get_scanner_rankings(
                 risk_flags=row.risk_flags or [],
                 model_type=row.model_type,
                 ranked_at=row.score_time.isoformat() if row.score_time else None,
+                partial_data=bool(bj.get("_partial_data", False)),
+                missing_inputs=list(bj.get("_missing_inputs", [])),
+                model_version=str(bj.get("_model_version", "v3.0.0")) if bj.get("_model_version") else None,
             )
         )
 

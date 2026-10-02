@@ -117,6 +117,10 @@ class BacktestConfig(BaseModel):
     timeframe: str = Field(default="1d", description="Bar timeframe (e.g. 1h, 1d, 4h)")
     intrabar_order: str = Field(default="stop_first", description="Bracket trigger priority: 'stop_first' or 'tp_first'")
     point_in_time_universe: bool = Field(default=True, description="Enforce point-in-time universe membership to mitigate survivorship bias")
+    position_sizer: str = Field(default="fixed_percent", description="Position sizing model: fixed_percent, volatility_target, fractional_kelly")
+    target_annual_vol: float = Field(default=0.20, ge=0.01, le=2.0, description="Target annualized volatility for volatility targeting")
+    kelly_fraction: float = Field(default=0.25, ge=0.05, le=1.0, description="Fraction of full Kelly criterion (e.g. 0.25 for quarter Kelly)")
+    portfolio_vol_cap: float | None = Field(default=0.30, ge=0.05, le=2.0, description="Portfolio annualized volatility cap")
     parameters: dict[str, Any] = Field(default_factory=dict, description="Strategy-specific hyperparameters")
 
 
@@ -131,6 +135,8 @@ class BacktestResult(BaseModel):
     total_trades: int = Field(default=0)
     trades: list[dict[str, Any]] = Field(default_factory=list, description="List of trade logs")
     equity_curve: list[dict[str, Any]] = Field(default_factory=list, description="Time series of equity values")
+    regime_breakdown: dict[str, Any] = Field(default_factory=dict, description="Performance metrics broken down by market regime")
+    statistical_robustness: dict[str, Any] = Field(default_factory=dict, description="Bootstrap CIs, DSR, and strategy trials")
     survivorship_bias_status: str = Field(
         default="Survivorship Bias: Mitigated (Point-in-Time Universe)",
         description="Survivorship bias attribution indicator",

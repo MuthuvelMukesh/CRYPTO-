@@ -114,6 +114,46 @@
         }
       }
     },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "Health & Diagnostics"
+        ],
+        "summary": "Prometheus metrics exposition endpoint",
+        "description": "Expose Prometheus telemetry metrics.",
+        "operationId": "get_metrics_metrics_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system": {
+      "get": {
+        "tags": [
+          "Health & Diagnostics"
+        ],
+        "summary": "Comprehensive platform operational and infrastructure summary",
+        "description": "Return complete system state: ingestion lag, scanner status, job queue, and ledger health.",
+        "operationId": "get_system_summary_system_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/token": {
       "post": {
         "tags": [
@@ -2968,6 +3008,312 @@
         }
       }
     },
+    "/api/v1/research/attribution": {
+      "get": {
+        "tags": [
+          "Research & Validity"
+        ],
+        "summary": "Get forward-return factor attribution and decile report",
+        "description": "Evaluate point-in-time forward returns, Information Coefficient (Pearson & Spearman), and score deciles.",
+        "operationId": "get_forward_return_attribution_api_v1_research_attribution_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "horizon",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Forward horizon: '1d', '7d', or '30d'",
+              "default": "1d",
+              "title": "Horizon"
+            },
+            "description": "Forward horizon: '1d', '7d', or '30d'"
+          },
+          {
+            "name": "synthetic",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Test on synthetic dataset with known ground-truth IC",
+              "default": false,
+              "title": "Synthetic"
+            },
+            "description": "Test on synthetic dataset with known ground-truth IC"
+          },
+          {
+            "name": "min_samples",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5000,
+              "minimum": 3,
+              "description": "Minimum sample size threshold",
+              "default": 30,
+              "title": "Min Samples"
+            },
+            "description": "Minimum sample size threshold"
+          },
+          {
+            "name": "target_ic",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 0.9,
+              "minimum": -0.9,
+              "description": "Target IC for synthetic test mode",
+              "default": 0.18,
+              "title": "Target Ic"
+            },
+            "description": "Target IC for synthetic test mode"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/research/ic": {
+      "get": {
+        "tags": [
+          "Research & Validity"
+        ],
+        "summary": "Get rolling Information Coefficient time-series",
+        "description": "Return chronological time series of Information Coefficients.",
+        "operationId": "get_rolling_ic_series_api_v1_research_ic_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "horizon",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Horizon '1d', '7d', '30d'",
+              "default": "1d",
+              "title": "Horizon"
+            },
+            "description": "Horizon '1d', '7d', '30d'"
+          },
+          {
+            "name": "synthetic",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Generate synthetic IC timeline",
+              "default": false,
+              "title": "Synthetic"
+            },
+            "description": "Generate synthetic IC timeline"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollingICResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/research/trials": {
+      "get": {
+        "tags": [
+          "Research & Validity"
+        ],
+        "summary": "Get counter and distribution of strategy parameter trials",
+        "description": "Retrieve multiple testing trial tracking statistics for Deflated Sharpe Ratio computation.",
+        "operationId": "get_strategy_trials_api_v1_research_trials_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrialsSummaryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/research/model-gate": {
+      "post": {
+        "tags": [
+          "Research & Validity"
+        ],
+        "summary": "Evaluate experimental ML model against production gate",
+        "description": "Verify that an experimental ML model strictly beats baseline out-of-sample before production ranking.",
+        "operationId": "evaluate_ml_model_gate_api_v1_research_model_gate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelGateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionGateResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stream/scanner": {
       "get": {
         "tags": [
@@ -3322,6 +3668,137 @@
           "is_active"
         ],
         "title": "AssetResponse"
+      },
+      "AttributionReport": {
+        "properties": {
+          "horizon": {
+            "type": "string",
+            "title": "Horizon",
+            "description": "Forward return horizon ('1d', '7d', '30d')"
+          },
+          "sample_size": {
+            "type": "integer",
+            "title": "Sample Size",
+            "description": "Number of snapshot observation pairs analyzed"
+          },
+          "data_mode": {
+            "type": "string",
+            "title": "Data Mode",
+            "description": "Data provenance mode",
+            "default": "HISTORICAL"
+          },
+          "pearson_ic": {
+            "type": "number",
+            "title": "Pearson Ic",
+            "description": "Linear correlation between score and forward return"
+          },
+          "pearson_p_value": {
+            "type": "number",
+            "title": "Pearson P Value",
+            "description": "P-value for H0: Pearson IC == 0"
+          },
+          "pearson_ci_lower": {
+            "type": "number",
+            "title": "Pearson Ci Lower",
+            "description": "95% Bootstrap CI lower bound for Pearson IC"
+          },
+          "pearson_ci_upper": {
+            "type": "number",
+            "title": "Pearson Ci Upper",
+            "description": "95% Bootstrap CI upper bound for Pearson IC"
+          },
+          "spearman_rank_ic": {
+            "type": "number",
+            "title": "Spearman Rank Ic",
+            "description": "Rank correlation between score rank and return rank"
+          },
+          "spearman_p_value": {
+            "type": "number",
+            "title": "Spearman P Value",
+            "description": "P-value for H0: Spearman Rank IC == 0"
+          },
+          "spearman_ci_lower": {
+            "type": "number",
+            "title": "Spearman Ci Lower",
+            "description": "95% Bootstrap CI lower bound for Spearman IC"
+          },
+          "spearman_ci_upper": {
+            "type": "number",
+            "title": "Spearman Ci Upper",
+            "description": "95% Bootstrap CI upper bound for Spearman IC"
+          },
+          "hit_rate_pct": {
+            "type": "number",
+            "title": "Hit Rate Pct",
+            "description": "Percentage of scores > 50 yielding positive forward return"
+          },
+          "hit_rate_ci_lower": {
+            "type": "number",
+            "title": "Hit Rate Ci Lower",
+            "description": "95% Bootstrap CI lower bound for hit rate"
+          },
+          "hit_rate_ci_upper": {
+            "type": "number",
+            "title": "Hit Rate Ci Upper",
+            "description": "95% Bootstrap CI upper bound for hit rate"
+          },
+          "deciles": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Deciles",
+            "description": "Performance across deciles 1-10"
+          },
+          "monotonicity_spread_pct": {
+            "type": "number",
+            "title": "Monotonicity Spread Pct",
+            "description": "Decile 10 mean return minus Decile 1 mean return",
+            "default": 0.0
+          },
+          "small_sample_warning": {
+            "type": "boolean",
+            "title": "Small Sample Warning",
+            "description": "True if sample size N < 30 indicates high estimator variance",
+            "default": false
+          },
+          "small_sample_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Small Sample Message",
+            "description": "Plain-language warning if sample size is insufficient"
+          },
+          "plain_language_summary": {
+            "type": "string",
+            "title": "Plain Language Summary",
+            "description": "Plain-language interpretation of statistical factor efficacy",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "horizon",
+          "sample_size",
+          "pearson_ic",
+          "pearson_p_value",
+          "pearson_ci_lower",
+          "pearson_ci_upper",
+          "spearman_rank_ic",
+          "spearman_p_value",
+          "spearman_ci_lower",
+          "spearman_ci_upper",
+          "hit_rate_pct",
+          "hit_rate_ci_lower",
+          "hit_rate_ci_upper"
+        ],
+        "title": "AttributionReport",
+        "description": "Complete institutional forward-return factor attribution report."
       },
       "AuthIdentity": {
         "properties": {
@@ -3941,6 +4418,44 @@
         "title": "MemeAuditRecord",
         "description": "Comprehensive quantitative analysis and risk card for a meme token."
       },
+      "ModelGateRequest": {
+        "properties": {
+          "model_predictions": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Model Predictions"
+          },
+          "baseline_predictions": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Baseline Predictions"
+          },
+          "actual_returns": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Actual Returns"
+          },
+          "min_ic_improvement": {
+            "type": "number",
+            "title": "Min Ic Improvement",
+            "default": 0.02
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_predictions",
+          "baseline_predictions",
+          "actual_returns"
+        ],
+        "title": "ModelGateRequest",
+        "description": "Evaluation request checking if experimental ML model passes production gate."
+      },
       "OrderResponse": {
         "properties": {
           "id": {
@@ -4350,6 +4865,49 @@
         "title": "PositionResponse",
         "description": "Open or closed virtual paper position \u2014 v2.0.\n\nprice_stale: True if the current_price used for MTM is stale (no live data).\nWhen True, unrealized_pnl and market_value should be treated as approximate."
       },
+      "ProductionGateResult": {
+        "properties": {
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          },
+          "model_rank_ic": {
+            "type": "number",
+            "title": "Model Rank Ic"
+          },
+          "baseline_rank_ic": {
+            "type": "number",
+            "title": "Baseline Rank Ic"
+          },
+          "ic_delta": {
+            "type": "number",
+            "title": "Ic Delta"
+          },
+          "p_value": {
+            "type": "number",
+            "title": "P Value"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "evaluated_at": {
+            "type": "string",
+            "title": "Evaluated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "passed",
+          "model_rank_ic",
+          "baseline_rank_ic",
+          "ic_delta",
+          "p_value",
+          "message",
+          "evaluated_at"
+        ],
+        "title": "ProductionGateResult"
+      },
       "ReconciliationResult": {
         "properties": {
           "account_id": {
@@ -4430,6 +4988,62 @@
         "type": "object",
         "title": "ResetAccountRequest",
         "description": "Payload to reset virtual account."
+      },
+      "RollingICPoint": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "pearson_ic": {
+            "type": "number",
+            "title": "Pearson Ic"
+          },
+          "spearman_ic": {
+            "type": "number",
+            "title": "Spearman Ic"
+          },
+          "sample_size": {
+            "type": "integer",
+            "title": "Sample Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "pearson_ic",
+          "spearman_ic",
+          "sample_size"
+        ],
+        "title": "RollingICPoint",
+        "description": "Point-in-time Information Coefficient measurement."
+      },
+      "RollingICResponse": {
+        "properties": {
+          "horizon": {
+            "type": "string",
+            "title": "Horizon"
+          },
+          "data_mode": {
+            "type": "string",
+            "title": "Data Mode"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/RollingICPoint"
+            },
+            "type": "array",
+            "title": "Points"
+          }
+        },
+        "type": "object",
+        "required": [
+          "horizon",
+          "data_mode",
+          "points"
+        ],
+        "title": "RollingICResponse",
+        "description": "Time-series of Information Coefficient observations."
       },
       "RunBacktestRequest": {
         "properties": {
@@ -4685,6 +5299,29 @@
               }
             ],
             "title": "Ranked At"
+          },
+          "partial_data": {
+            "type": "boolean",
+            "title": "Partial Data",
+            "default": false
+          },
+          "missing_inputs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Inputs"
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version"
           }
         },
         "type": "object",
@@ -4910,6 +5547,24 @@
             "type": "string",
             "title": "Time"
           },
+          "partial_data": {
+            "type": "boolean",
+            "title": "Partial Data",
+            "default": false
+          },
+          "missing_inputs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Inputs",
+            "default": []
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version",
+            "default": "v3.0.0"
+          },
           "components": {
             "additionalProperties": {
               "$ref": "#/components/schemas/FactorContributionResponse"
@@ -5016,6 +5671,24 @@
           "time": {
             "type": "string",
             "title": "Time"
+          },
+          "partial_data": {
+            "type": "boolean",
+            "title": "Partial Data",
+            "default": false
+          },
+          "missing_inputs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Inputs",
+            "default": []
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version",
+            "default": "v3.0.0"
           }
         },
         "type": "object",
@@ -5215,6 +5888,35 @@
         ],
         "title": "TokenResponse",
         "description": "JWT Bearer access token response."
+      },
+      "TrialsSummaryResponse": {
+        "properties": {
+          "total_trials": {
+            "type": "integer",
+            "title": "Total Trials"
+          },
+          "variance_trials": {
+            "type": "number",
+            "title": "Variance Trials"
+          },
+          "mean_sharpe": {
+            "type": "number",
+            "title": "Mean Sharpe"
+          },
+          "expected_max_sharpe": {
+            "type": "number",
+            "title": "Expected Max Sharpe"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_trials",
+          "variance_trials",
+          "mean_sharpe",
+          "expected_max_sharpe"
+        ],
+        "title": "TrialsSummaryResponse",
+        "description": "Summary of strategy variants evaluated on the platform for multiple testing correction."
       },
       "ValidationError": {
         "properties": {

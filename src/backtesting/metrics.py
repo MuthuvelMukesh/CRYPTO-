@@ -355,3 +355,82 @@ def compute_complete_metrics(
 
     metrics.update(trade_stats)
     return metrics
+
+
+def compute_regime_split_metrics(
+    equity_curve: list[EquityPoint],
+    trades: list[BacktestTradeRecord],
+    regime_by_time: dict[datetime, str] | None = None,
+    periods_per_year: int = 365,
+) -> dict[str, Any]:
+    """Calculate backtest performance, risk, and trade statistics partitioned by market regime."""
+    if not equity_curve or not regime_by_time:
+        return {}
+
+    # Map each bar to its regime
+    regime_groups: dict[str, list[float]] = {}
+    total_bars = max(1, len(equity_curve) - 1)
+
+    # Returns per bar
+    for i in range(1, len(equity_curve)):
+        pt = equity_curve[i]
+        prev_pt = equity_curve[i - 1]
+        regime = regime_by_time.get(pt.time, "NEUTRAL")
+        ret = (pt.equity - prev_pt.equity) / prev_pt.equity if prev_pt.equity > 0 else 0.0
+
+        if regime not in regime_groups:
+            regime_groups[regime] = []
+        regime_groups[regime].append(ret)
+
+    # Partition trades by entry time regime
+    trades_by_regime: dict[str, list[BacktestTradeRecord]] = {}
+    for t in trades:
+        regime = regime_by_time.get(t.entry_time, "NEUTRAL")
+        if regime not in trades_by_regime:
+            trades_by_regime[regime] = []
+        trades_by_regime[regime].append(t)
+
+    result: dict[str, Any] = {}
+    all_regimes = sorted(set(list(regime_groups.keys()) + list(trades_by_regime.keys())))
+
+    for reg in all_regimes:
+        rets = regime_groups.get(reg, [])
+        reg_trades = trades_by_regime.get(reg, [])
+
+        duration_pct = round((len(rets) / total_bars) * 100.0, 2)
+
+        # Cumulative return during regime
+        if rets:
+            cum_factor = float(np.prod([1.0 + r for r in rets]))
+            ret_pct = round((cum_factor - 1.0) * 100.0, 2)
+            vol = calculate_annualized_volatility(rets, periods_per_year=periods_per_year)
+            sr = calculate_sharpe_ratio(rets, periods_per_year=periods_per_year)
+            cum_eq = np.cumprod([1.0 + r for r in rets])
+            peak = np.maximum.accumulate(cum_eq)
+            dd = (peak - cum_eq) / peak
+            max_dd = round(float(np.max(dd)) * 100.0, 2) if len(dd) > 0 else 0.0
+        else:
+            ret_pct = 0.0
+            vol = 0.0
+            sr = 0.0
+            max_dd = 0.0
+
+        n_trades = len(reg_trades)
+        wins = [t.pnl_usd for t in reg_trades if t.pnl_usd > 0]
+        win_rate = round((len(wins) / n_trades) * 100.0, 2) if n_trades > 0 else 0.0
+        tot_pnl = round(sum(t.pnl_usd for t in reg_trades), 2)
+
+        result[reg] = {
+            "regime": reg,
+            "duration_pct": duration_pct,
+            "bars_count": len(rets),
+            "return_pct": ret_pct,
+            "annualized_volatility": vol,
+            "sharpe_ratio": round(sr, 2),
+            "max_drawdown_pct": max_dd,
+            "trades_count": n_trades,
+            "win_rate": win_rate,
+            "total_pnl_usd": tot_pnl,
+        }
+
+    return result

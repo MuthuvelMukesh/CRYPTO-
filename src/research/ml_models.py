@@ -1,5 +1,6 @@
 """Quantitative Machine Learning, Walk-Forward Validation, and Feature Importance Engine."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -285,4 +286,79 @@ def walk_forward_train_evaluate(
         feature_importances=model.get_feature_importances(),
         n_samples_train=len(train_df),
         n_samples_test=len(test_df),
+    )
+
+
+@dataclass
+class ProductionGateResult:
+    """Result of evaluating whether an experimental ML model passes the production ranking gate."""
+
+    passed: bool
+    model_rank_ic: float
+    baseline_rank_ic: float
+    ic_delta: float
+    p_value: float
+    message: str
+    evaluated_at: str
+
+
+def evaluate_production_gate(
+    model_predictions: Sequence[float],
+    baseline_predictions: Sequence[float],
+    actual_returns: Sequence[float],
+    min_ic_improvement: float = 0.02,
+) -> ProductionGateResult:
+    """Evaluate whether an experimental ML model score is permitted to feed production ranking.
+
+    Strict Invariant: No ML model feeds production ranking until it beats the baseline out-of-sample
+    in the attribution report by at least min_ic_improvement with a positive rank correlation.
+    """
+
+    from src.research.attribution import compute_spearman_correlation
+    from src.utils.time import utc_now
+
+    m_preds = np.asarray(model_predictions, dtype=np.float64)
+    b_preds = np.asarray(baseline_predictions, dtype=np.float64)
+    rets = np.asarray(actual_returns, dtype=np.float64)
+
+    mask = (~np.isnan(m_preds)) & (~np.isnan(b_preds)) & (~np.isnan(rets))
+    m_clean = m_preds[mask]
+    b_clean = b_preds[mask]
+    rets_clean = rets[mask]
+
+    if len(m_clean) < 10:
+        return ProductionGateResult(
+            passed=False,
+            model_rank_ic=0.0,
+            baseline_rank_ic=0.0,
+            ic_delta=0.0,
+            p_value=1.0,
+            message="Insufficient out-of-sample data points to evaluate production gate (N < 10)",
+            evaluated_at=utc_now().isoformat(),
+        )
+
+    model_ic, _, model_p = compute_spearman_correlation(m_clean, rets_clean)
+    baseline_ic, _, _ = compute_spearman_correlation(b_clean, rets_clean)
+    delta = model_ic - baseline_ic
+
+    passed = bool(model_ic > 0 and delta >= min_ic_improvement and model_p < 0.05)
+    if passed:
+        msg = (
+            f"Production Gate PASSED: Model OOS Rank IC ({model_ic:+.3f}) beats baseline ({baseline_ic:+.3f}) "
+            f"by {delta:+.3f} (threshold >= {min_ic_improvement:+.3f}, p={model_p:.3f})"
+        )
+    else:
+        msg = (
+            f"Production Gate REJECTED: Model OOS Rank IC ({model_ic:+.3f}) failed to demonstrate required "
+            f"statistically significant superiority over baseline ({baseline_ic:+.3f}, delta={delta:+.3f}, p={model_p:.3f})"
+        )
+
+    return ProductionGateResult(
+        passed=passed,
+        model_rank_ic=round(model_ic, 4),
+        baseline_rank_ic=round(baseline_ic, 4),
+        ic_delta=round(delta, 4),
+        p_value=round(model_p, 4),
+        message=msg,
+        evaluated_at=utc_now().isoformat(),
     )

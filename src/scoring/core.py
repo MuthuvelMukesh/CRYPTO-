@@ -11,7 +11,11 @@ from src.scoring.base import (
     clamp,
     normalize_linear,
     normalize_ratio,
+    redistribute_weights,
+    winsorize,
 )
+
+CORE_MODEL_VERSION = "v3.0.0"
 
 DEFAULT_CORE_WEIGHTS = {
     "momentum": 0.25,
@@ -40,85 +44,109 @@ class CoreScorer(BaseScorer):
         holder_metrics: Any | None = None,
         weights: dict[str, float] | None = None,
     ) -> ScoreCard:
-        w = {**DEFAULT_CORE_WEIGHTS, **(weights or {})}
+        w_base = {**DEFAULT_CORE_WEIGHTS, **(weights or {})}
+        missing_inputs: list[str] = []
 
-        # 1. Momentum Score (0-100)
-        # Combine 7D return (-15% to +25%), 30D return (-20% to +40%), and acceleration
-        r7 = normalize_linear(getattr(features, "return_7d", None), -0.15, 0.25)
-        r30 = normalize_linear(getattr(features, "return_30d", None), -0.20, 0.40)
-        acc = normalize_linear(getattr(features, "momentum_acceleration", None), -0.10, 0.10)
+        # 1. Momentum Score (0-100) with Winsorization
+        r7_val = winsorize(getattr(features, "return_7d", None), -0.50, 0.50)
+        r30_val = winsorize(getattr(features, "return_30d", None), -0.70, 1.00)
+        acc_val = winsorize(getattr(features, "momentum_acceleration", None), -0.30, 0.30)
+
+        r7 = normalize_linear(r7_val, -0.15, 0.25)
+        r30 = normalize_linear(r30_val, -0.20, 0.40)
+        acc = normalize_linear(acc_val, -0.10, 0.10)
         momentum_score = clamp((r7 * 0.45) + (r30 * 0.40) + (acc * 0.15))
 
         # 2. Relative Strength Score (0-100)
         if asset_id == "BTC":
-            # For BTC, evaluate momentum vs broader trend and historical dominance
             rs_score = clamp(momentum_score)
         else:
-            # For ETH, evaluate excess return vs BTC
-            rs_btc = getattr(features, "rs_btc_30d", None)
-            rs_score = normalize_linear(rs_btc, -0.15, 0.15)
+            rs_val = winsorize(getattr(features, "rs_btc_30d", None), -0.50, 0.50)
+            if rs_val is None:
+                missing_inputs.append("relative_strength")
+                rs_score = 0.0
+            else:
+                rs_score = normalize_linear(rs_val, -0.15, 0.15)
 
         # 3. Trend Score (0-100)
-        # Price/EMA ratios + ADX trend strength
-        ema20_s = normalize_ratio(getattr(features, "ema20_ratio", None), 1.0, 0.08)
-        ema50_s = normalize_ratio(getattr(features, "ema50_ratio", None), 1.0, 0.15)
-        ema200_s = normalize_ratio(getattr(features, "ema200_ratio", None), 1.0, 0.25)
-        adx_s = normalize_linear(getattr(features, "adx_14", None), 10.0, 45.0)
+        ema20_val = winsorize(getattr(features, "ema20_ratio", None), 0.50, 1.50)
+        ema50_val = winsorize(getattr(features, "ema50_ratio", None), 0.40, 1.60)
+        ema200_val = winsorize(getattr(features, "ema200_ratio", None), 0.30, 2.00)
+        adx_val = winsorize(getattr(features, "adx_14", None), 0.0, 100.0)
+
+        ema20_s = normalize_ratio(ema20_val, 1.0, 0.08)
+        ema50_s = normalize_ratio(ema50_val, 1.0, 0.15)
+        ema200_s = normalize_ratio(ema200_val, 1.0, 0.25)
+        adx_s = normalize_linear(adx_val, 10.0, 45.0)
         trend_score = clamp((ema20_s * 0.35) + (ema50_s * 0.35) + (ema200_s * 0.20) + (adx_s * 0.10))
 
         # 4. Volume Score (0-100)
-        # RVOL 20 (0.5 to 2.5) + volume acceleration
-        rvol_s = normalize_linear(getattr(features, "volume_to_20d_avg", None), 0.5, 2.5)
-        vacc_s = normalize_linear(getattr(features, "volume_acceleration", None), 0.7, 1.5)
+        rvol_val = winsorize(getattr(features, "volume_to_20d_avg", None), 0.1, 10.0)
+        vacc_val = winsorize(getattr(features, "volume_acceleration", None), 0.2, 5.0)
+        rvol_s = normalize_linear(rvol_val, 0.5, 2.5)
+        vacc_s = normalize_linear(vacc_val, 0.7, 1.5)
         volume_score = clamp((rvol_s * 0.70) + (vacc_s * 0.30))
 
         # 5. Liquidity Score (0-100)
-        # Tight spread (< 15 bps = high score) + turnover ratio
-        spread_s = normalize_linear(getattr(features, "spread_est_bps", None), 1.0, 25.0, inverted=True)
-        turnover_s = normalize_linear(getattr(features, "turnover_ratio", None), 0.01, 0.15)
+        spread_val = winsorize(getattr(features, "spread_est_bps", None), 0.5, 100.0)
+        turnover_val = winsorize(getattr(features, "turnover_ratio", None), 0.001, 1.0)
+        spread_s = normalize_linear(spread_val, 1.0, 25.0, inverted=True)
+        turnover_s = normalize_linear(turnover_val, 0.01, 0.15)
         liquidity_score = clamp((spread_s * 0.60) + (turnover_s * 0.40))
 
-        # 6. Fundamentals Score (0-100)
-        # TVL growth, fee generation, or neutral baseline if unavailable
+        # 6. Fundamentals Score (0-100) - No flat baselines!
+        fundamentals_score = 0.0
+        has_fundamentals = False
         if onchain and getattr(onchain, "tvl_usd", None) is not None:
-            tvl_growth = normalize_linear(getattr(onchain, "tvl_change_7d", None), -0.10, 0.10)
-            tx_count = normalize_linear(float(getattr(onchain, "tx_count_24h", 0) or 0), 10000.0, 1000000.0)
+            tvl_growth_val = winsorize(getattr(onchain, "tvl_change_7d", None), -0.50, 0.50)
+            tx_count_val = winsorize(float(getattr(onchain, "tx_count_24h", 0) or 0), 0.0, 10000000.0)
+            tvl_growth = normalize_linear(tvl_growth_val, -0.10, 0.10)
+            tx_count = normalize_linear(tx_count_val, 10000.0, 1000000.0)
             fundamentals_score = clamp((tvl_growth * 0.50) + (tx_count * 0.50))
+            has_fundamentals = True
         else:
-            fundamentals_score = 65.0  # Stable institutional baseline for core assets
+            missing_inputs.append("fundamentals")
 
         # 7. Risk Factor (0-100, where 100 is lowest risk / safest)
-        realized_vol = normalize_linear(getattr(features, "realized_vol_30d", None), 0.30, 1.20, inverted=True)
-        max_dd = normalize_linear(getattr(features, "max_drawdown_90d", None), 5.0, 50.0, inverted=True)
+        rvol_30_val = winsorize(getattr(features, "realized_vol_30d", None), 0.10, 3.0)
+        max_dd_val = winsorize(getattr(features, "max_drawdown_90d", None), 0.0, 95.0)
+        realized_vol = normalize_linear(rvol_30_val, 0.30, 1.20, inverted=True)
+        max_dd = normalize_linear(max_dd_val, 5.0, 50.0, inverted=True)
         risk_score = clamp((realized_vol * 0.50) + (max_dd * 0.50))
 
-        # Calculate Quality Score (Fundamental, trend, and liquidity health)
-        quality_score = clamp((trend_score * 0.40) + (liquidity_score * 0.30) + (fundamentals_score * 0.30))
+        # Determine active factors and redistribute weights dynamically
+        all_potential_factors = ["momentum", "relative_strength", "trend", "volume", "liquidity", "fundamentals", "risk"]
+        active_factors = [f for f in all_potential_factors if f not in missing_inputs]
+        partial_data = len(missing_inputs) > 0
+        w = redistribute_weights(w_base, active_factors)
 
-        # Component contributions
-        components = {
-            "momentum": FactorContribution(
-                name="momentum", score=momentum_score, weight=w["momentum"], contribution=momentum_score * w["momentum"]
-            ),
-            "relative_strength": FactorContribution(
-                name="relative_strength", score=rs_score, weight=w["relative_strength"], contribution=rs_score * w["relative_strength"]
-            ),
-            "trend": FactorContribution(
-                name="trend", score=trend_score, weight=w["trend"], contribution=trend_score * w["trend"]
-            ),
-            "volume": FactorContribution(
-                name="volume", score=volume_score, weight=w["volume"], contribution=volume_score * w["volume"]
-            ),
-            "liquidity": FactorContribution(
-                name="liquidity", score=liquidity_score, weight=w["liquidity"], contribution=liquidity_score * w["liquidity"]
-            ),
-            "fundamentals": FactorContribution(
-                name="fundamentals", score=fundamentals_score, weight=w["fundamentals"], contribution=fundamentals_score * w["fundamentals"]
-            ),
-            "risk": FactorContribution(
-                name="risk", score=risk_score, weight=w["risk"], contribution=risk_score * w["risk"]
-            ),
+        # Quality Score: computed from present components
+        if has_fundamentals:
+            quality_score = clamp((trend_score * 0.40) + (liquidity_score * 0.30) + (fundamentals_score * 0.30))
+        else:
+            quality_score = clamp((trend_score * 0.55) + (liquidity_score * 0.45))
+
+        # Factor contributions with dynamically redistributed weights
+        factor_scores = {
+            "momentum": momentum_score,
+            "relative_strength": rs_score,
+            "trend": trend_score,
+            "volume": volume_score,
+            "liquidity": liquidity_score,
+            "fundamentals": fundamentals_score,
+            "risk": risk_score,
         }
+
+        components: dict[str, FactorContribution] = {}
+        for f in all_potential_factors:
+            score_val = factor_scores[f]
+            weight_val = w.get(f, 0.0)
+            components[f] = FactorContribution(
+                name=f,
+                score=score_val,
+                weight=round(weight_val, 4),
+                contribution=round(score_val * weight_val, 2),
+            )
 
         # Check risk penalties
         penalties: list[PenaltyDeduction] = []
@@ -150,6 +178,9 @@ class CoreScorer(BaseScorer):
             components=components,
             penalties=penalties,
             risk_flags=risk_flags,
+            partial_data=partial_data,
+            missing_inputs=missing_inputs,
+            model_version=CORE_MODEL_VERSION,
         )
         card.explainability_summary = card.generate_summary()
         return card

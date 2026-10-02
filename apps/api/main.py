@@ -38,6 +38,7 @@ from apps.api.routes import (
     health,
     meme,
     paper,
+    research,
     scanner,
     scores,
     sectors,
@@ -150,6 +151,7 @@ def create_app() -> FastAPI:
     app.include_router(meme.router, dependencies=auth_dep)
     app.include_router(sectors.router, dependencies=auth_dep)
     app.include_router(alerts.router, dependencies=auth_dep)
+    app.include_router(research.router, dependencies=auth_dep)
     app.include_router(streams.router, dependencies=auth_dep)
 
     return app

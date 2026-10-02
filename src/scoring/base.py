@@ -39,14 +39,20 @@ class ScoreCard(BaseModel):
     components: dict[str, FactorContribution]
     penalties: list[PenaltyDeduction] = Field(default_factory=list)
     risk_flags: list[str] = Field(default_factory=list)
+    partial_data: bool = False
+    missing_inputs: list[str] = Field(default_factory=list)
+    model_version: str = "v3.0.0"
     explainability_summary: str = ""
 
     def generate_summary(self) -> str:
         """Generate human-readable explainability text."""
-        parts = [f"Opportunity Score: {self.opportunity_score:.1f}/100 [{self.model_type}]"]
+        header = f"Opportunity Score: {self.opportunity_score:.1f}/100 [{self.model_type} {self.model_version}]"
+        if self.partial_data:
+            header += f" [PARTIAL DATA: missing {', '.join(self.missing_inputs)}]"
+        parts = [header]
         contrib_strs = []
         for _name, comp in self.components.items():
-            contrib_strs.append(f"{comp.name.title()} +{comp.contribution:.1f}pts ({comp.score:.0f}/100)")
+            contrib_strs.append(f"{comp.name.title()} +{comp.contribution:.1f}pts ({comp.score:.0f}/100, w={comp.weight:.2f})")
         parts.append("Factors: " + ", ".join(contrib_strs))
 
         if self.penalties:
@@ -56,6 +62,36 @@ class ScoreCard(BaseModel):
             parts.append("Risk Adjustments: None")
 
         return " | ".join(parts)
+
+
+def winsorize(
+    val: float | None,
+    min_bound: float,
+    max_bound: float,
+) -> float | None:
+    """Winsorize (clip) a raw metric to bounds [min_bound, max_bound] to mitigate outlier distortion."""
+    if val is None or np.isnan(val):
+        return None
+    return float(max(min_bound, min(max_bound, val)))
+
+
+def redistribute_weights(
+    base_weights: dict[str, float],
+    active_factors: list[str],
+) -> dict[str, float]:
+    """Dynamically redistribute factor weights proportionately among active/available factors.
+
+    Ensures sum of active weights == 1.0 without arbitrary flat baseline injection.
+    """
+    active_set = set(active_factors)
+    active_w = {k: v for k, v in base_weights.items() if k in active_set and v > 0}
+    total_active = sum(active_w.values())
+
+    if total_active <= 1e-9:
+        n = len(active_set)
+        return dict.fromkeys(active_set, 1.0 / n) if n > 0 else {}
+
+    return {k: v / total_active for k, v in active_w.items()}
 
 
 def clamp(val: float, min_val: float = 0.0, max_val: float = 100.0) -> float:

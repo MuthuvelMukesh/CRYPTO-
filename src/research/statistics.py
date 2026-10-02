@@ -7,6 +7,7 @@ Implements Bailey & López de Prado (2014):
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
@@ -143,3 +144,111 @@ def compute_deflated_sharpe_ratio(
         "skewness": round(skewness, 4),
         "kurtosis": round(kurtosis, 4),
     }
+
+
+def bootstrap_confidence_interval(
+    data: np.ndarray | Sequence[float],
+    statistic_fn: Any = np.mean,
+    n_bootstrap: int = 1000,
+    alpha: float = 0.05,
+    seed: int = 42,
+) -> dict[str, float]:
+    """Compute empirical non-parametric bootstrap confidence interval for any scalar statistic.
+
+    Args:
+        data: Sample 1D array of observations.
+        statistic_fn: Callable taking 1D numpy array and returning scalar statistic.
+        n_bootstrap: Number of bootstrap resamples (default 1000).
+        alpha: Significance level (default 0.05 for 95% CI).
+        seed: Random seed for deterministic reproducibility.
+
+    Returns:
+        Dict with "estimate", "ci_lower", "ci_upper", "std_err".
+    """
+    arr = np.asarray(data, dtype=np.float64)
+    arr = arr[~np.isnan(arr)]
+    n = len(arr)
+    if n == 0:
+        return {"estimate": 0.0, "ci_lower": 0.0, "ci_upper": 0.0, "std_err": 0.0}
+
+    point_estimate = float(statistic_fn(arr))
+    if n < 3:
+        return {
+            "estimate": round(point_estimate, 4),
+            "ci_lower": round(point_estimate, 4),
+            "ci_upper": round(point_estimate, 4),
+            "std_err": 0.0,
+        }
+
+    rng = np.random.default_rng(seed)
+    indices = rng.integers(0, n, size=(n_bootstrap, n))
+    resamples = arr[indices]
+
+    boot_stats = np.empty(n_bootstrap, dtype=np.float64)
+    for i in range(n_bootstrap):
+        boot_stats[i] = float(statistic_fn(resamples[i]))
+
+    lower_pct = 100.0 * (alpha / 2.0)
+    upper_pct = 100.0 * (1.0 - alpha / 2.0)
+    ci_lower = float(np.percentile(boot_stats, lower_pct))
+    ci_upper = float(np.percentile(boot_stats, upper_pct))
+    std_err = float(np.std(boot_stats, ddof=1))
+
+    return {
+        "estimate": round(point_estimate, 4),
+        "ci_lower": round(ci_lower, 4),
+        "ci_upper": round(ci_upper, 4),
+        "std_err": round(std_err, 4),
+    }
+
+
+class StrategyTrialTracker:
+    """Thread-safe counter and registry of strategy parameter variants evaluated.
+
+    Tracks total trials N and historical Sharpe ratios to power automated Deflated Sharpe Ratio calculation.
+    """
+
+    def __init__(self) -> None:
+        import threading
+        self._lock = threading.Lock()
+        self._trials_count: int = 0
+        self._sharpe_ratios: list[float] = []
+
+    def record_trial(self, sharpe_ratio: float, strategy_name: str | None = None) -> int:
+        """Record an evaluated strategy trial and its achieved Sharpe ratio."""
+        with self._lock:
+            self._trials_count += 1
+            if not np.isnan(sharpe_ratio) and not np.isinf(sharpe_ratio):
+                self._sharpe_ratios.append(float(sharpe_ratio))
+            return self._trials_count
+
+    @property
+    def total_trials(self) -> int:
+        with self._lock:
+            return self._trials_count
+
+    def get_distribution_stats(self) -> dict[str, float]:
+        """Compute trial count, mean Sharpe, and variance of Sharpes across all trials."""
+        with self._lock:
+            n = self._trials_count
+            if len(self._sharpe_ratios) < 2:
+                return {
+                    "n_trials": max(1, n),
+                    "mean_sharpe": float(self._sharpe_ratios[0]) if self._sharpe_ratios else 0.0,
+                    "variance_trials": 0.0,
+                }
+            arr = np.asarray(self._sharpe_ratios, dtype=np.float64)
+            return {
+                "n_trials": max(1, n),
+                "mean_sharpe": round(float(np.mean(arr)), 4),
+                "variance_trials": round(float(np.var(arr, ddof=1)), 6),
+            }
+
+    def reset(self) -> None:
+        with self._lock:
+            self._trials_count = 0
+            self._sharpe_ratios.clear()
+
+
+# Global trial tracker singleton
+global_trial_tracker = StrategyTrialTracker()
