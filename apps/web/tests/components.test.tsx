@@ -9,6 +9,7 @@ import {
   EmptyState,
   ErrorState,
 } from "../src/components/data";
+import { RegimeBadge } from "../src/components/domain/RegimeBadge";
 
 describe("Shared Data Components", () => {
   describe("DeltaCell", () => {
@@ -123,6 +124,43 @@ describe("Shared Data Components", () => {
       const retryBtn = screen.getByText("Retry Request");
       fireEvent.click(retryBtn);
       expect(handleRetry).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("RegimeBadge", () => {
+    it("renders RISK_ON with positive styling and confidence", () => {
+      const { container } = render(
+        <RegimeBadge regime="RISK_ON" confidence={0.88} />
+      );
+      expect(screen.getByText("RISK-ON")).toBeDefined();
+      expect(screen.getByText("88%")).toBeDefined();
+      expect(container.firstChild).toBeDefined();
+      expect((container.firstChild as HTMLElement).className).toContain("text-[var(--color-positive)]");
+    });
+
+    it("renders RISK_OFF with negative styling and confidence", () => {
+      const { container } = render(
+        <RegimeBadge regime="RISK_OFF" confidence={0.75} />
+      );
+      expect(screen.getByText("RISK-OFF")).toBeDefined();
+      expect(screen.getByText("75%")).toBeDefined();
+      expect((container.firstChild as HTMLElement).className).toContain("text-[var(--color-negative)]");
+    });
+
+    it("renders NEUTRAL with info styling", () => {
+      const { container } = render(
+        <RegimeBadge regime="NEUTRAL" confidence={0.5} />
+      );
+      expect(screen.getByText("NEUTRAL")).toBeDefined();
+      expect(screen.getByText("50%")).toBeDefined();
+      expect((container.firstChild as HTMLElement).className).toContain("text-[var(--color-info)]");
+    });
+
+    it("renders accessible role and aria-label", () => {
+      render(<RegimeBadge regime="RISK_ON" confidence={0.9} />);
+      const badge = screen.getByRole("status");
+      expect(badge.getAttribute("aria-label")).toContain("Market Regime: RISK-ON");
+      expect(badge.getAttribute("aria-label")).toContain("90%");
     });
   });
 });

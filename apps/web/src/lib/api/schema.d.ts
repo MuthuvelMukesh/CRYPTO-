@@ -267,6 +267,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/scanner/regime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get macro market regime, breadth, and benchmark asset status
+         * @description Classify macro regime (RISK_ON, NEUTRAL, RISK_OFF) from real BTC/ETH data.
+         */
+        get: operations["get_market_regime_api_v1_scanner_regime_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/assets": {
         parameters: {
             query?: never;
@@ -1346,6 +1366,42 @@ export interface components {
             config_hash: string;
             /** Message */
             message: string;
+        };
+        /**
+         * MarketRegimeResponse
+         * @description Macro market regime classification with breadth, BTC/ETH pricing, and telemetry.
+         */
+        MarketRegimeResponse: {
+            /** Data Mode */
+            data_mode: string;
+            /** Regime */
+            regime: string;
+            /** Confidence */
+            confidence: number;
+            /** Btc Above Ema50 */
+            btc_above_ema50: boolean;
+            /** Btc Above Ema200 */
+            btc_above_ema200: boolean;
+            /** Btc Trend Slope */
+            btc_trend_slope: number;
+            /** Market Breadth Pct */
+            market_breadth_pct: number;
+            /** Eth Btc Ratio Trend */
+            eth_btc_ratio_trend: number;
+            /** Funding Sentiment */
+            funding_sentiment: string;
+            /** Rationale */
+            rationale: string[];
+            /** Btc Price */
+            btc_price?: number | null;
+            /** Eth Price */
+            eth_price?: number | null;
+            /** Btc Return 1D Pct */
+            btc_return_1d_pct?: number | null;
+            /** Eth Return 1D Pct */
+            eth_return_1d_pct?: number | null;
+            /** Checked At */
+            checked_at: string;
         };
         /** MarketResponse */
         MarketResponse: {
@@ -2461,6 +2517,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": Record<string, never>;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_market_regime_api_v1_scanner_regime_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-API-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketRegimeResponse"];
                 };
             };
             /** @description Validation Error */

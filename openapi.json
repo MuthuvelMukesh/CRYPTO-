@@ -596,6 +596,61 @@
         }
       }
     },
+    "/api/v1/scanner/regime": {
+      "get": {
+        "tags": [
+          "Live Scanner"
+        ],
+        "summary": "Get macro market regime, breadth, and benchmark asset status",
+        "description": "Classify macro regime (RISK_ON, NEUTRAL, RISK_OFF) from real BTC/ETH data.",
+        "operationId": "get_market_regime_api_v1_scanner_regime_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketRegimeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/assets": {
       "get": {
         "tags": [
@@ -4251,6 +4306,117 @@
         ],
         "title": "JobCreatedResponse",
         "description": "Initial response returned upon scheduling an async backtest job."
+      },
+      "MarketRegimeResponse": {
+        "properties": {
+          "data_mode": {
+            "type": "string",
+            "title": "Data Mode"
+          },
+          "regime": {
+            "type": "string",
+            "title": "Regime"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "btc_above_ema50": {
+            "type": "boolean",
+            "title": "Btc Above Ema50"
+          },
+          "btc_above_ema200": {
+            "type": "boolean",
+            "title": "Btc Above Ema200"
+          },
+          "btc_trend_slope": {
+            "type": "number",
+            "title": "Btc Trend Slope"
+          },
+          "market_breadth_pct": {
+            "type": "number",
+            "title": "Market Breadth Pct"
+          },
+          "eth_btc_ratio_trend": {
+            "type": "number",
+            "title": "Eth Btc Ratio Trend"
+          },
+          "funding_sentiment": {
+            "type": "string",
+            "title": "Funding Sentiment"
+          },
+          "rationale": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Rationale"
+          },
+          "btc_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Btc Price"
+          },
+          "eth_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eth Price"
+          },
+          "btc_return_1d_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Btc Return 1D Pct"
+          },
+          "eth_return_1d_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eth Return 1D Pct"
+          },
+          "checked_at": {
+            "type": "string",
+            "title": "Checked At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data_mode",
+          "regime",
+          "confidence",
+          "btc_above_ema50",
+          "btc_above_ema200",
+          "btc_trend_slope",
+          "market_breadth_pct",
+          "eth_btc_ratio_trend",
+          "funding_sentiment",
+          "rationale",
+          "checked_at"
+        ],
+        "title": "MarketRegimeResponse",
+        "description": "Macro market regime classification with breadth, BTC/ETH pricing, and telemetry."
       },
       "MarketResponse": {
         "properties": {

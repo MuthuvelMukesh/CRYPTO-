@@ -10,6 +10,7 @@ import {
   Activity,
   Globe,
 } from "lucide-react";
+import { RegimeBadge } from "@/components/domain/RegimeBadge";
 
 interface TopBarProps {
   onOpenCommandPalette?: () => void;
@@ -94,18 +95,7 @@ export function TopBar({
       {/* Right: Telemetry & State Badges */}
       <div className="flex items-center gap-2.5">
         {/* Regime Badge */}
-        <div
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-sm)] border text-[11px] font-medium ${getRegimeColor(
-            regime
-          )}`}
-          title={`Market Regime: ${regime} (${Math.round(regimeConfidence * 100)}% confidence)`}
-        >
-          <Activity className="w-3 h-3" />
-          <span className="font-semibold uppercase tracking-wider">{regime}</span>
-          <span className="text-[10px] font-mono opacity-80">
-            {Math.round(regimeConfidence * 100)}%
-          </span>
-        </div>
+        <RegimeBadge regime={regime} confidence={regimeConfidence} size="sm" />
 
         {/* Data Mode Pill (Invariant 3) */}
         <div
