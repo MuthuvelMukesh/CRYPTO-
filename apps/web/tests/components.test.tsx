@@ -10,6 +10,9 @@ import {
   ErrorState,
 } from "../src/components/data";
 import { RegimeBadge } from "../src/components/domain/RegimeBadge";
+import { FactorRadarChart } from "../src/components/charts/FactorRadarChart";
+import { FeatureGlossaryTable } from "../src/components/domain/FeatureGlossaryTable";
+import { OrderTicketModal } from "../src/components/domain/OrderTicketModal";
 
 describe("Shared Data Components", () => {
   describe("DeltaCell", () => {
@@ -161,6 +164,84 @@ describe("Shared Data Components", () => {
       const badge = screen.getByRole("status");
       expect(badge.getAttribute("aria-label")).toContain("Market Regime: RISK-ON");
       expect(badge.getAttribute("aria-label")).toContain("90%");
+    });
+  });
+
+  describe("FactorRadarChart", () => {
+    it("renders SVG polygon and factor scores", () => {
+      render(
+        <FactorRadarChart
+          trendScore={82}
+          momentumScore={75}
+          qualityScore={90}
+          liquidityScore={65}
+          relativeStrengthScore={78}
+          opportunityScore={81.5}
+        />
+      );
+      expect(screen.getByText("Factor Radar Profile")).toBeDefined();
+      expect(screen.getByText("Net Score: 81.5")).toBeDefined();
+      expect(screen.getByText("Trend")).toBeDefined();
+      expect(screen.getByText("Momentum")).toBeDefined();
+      expect(screen.getByText("Quality")).toBeDefined();
+      expect(screen.getByText("Liquidity")).toBeDefined();
+      expect(screen.getByText("Rel Strength")).toBeDefined();
+    });
+  });
+
+  describe("FeatureGlossaryTable", () => {
+    it("renders feature metrics and handles category filter", () => {
+      render(
+        <FeatureGlossaryTable
+          features={{
+            return_1d: 0.052,
+            return_7d: 0.145,
+            adx_14: 28.4,
+            spread_est_bps: 14.2,
+          }}
+        />
+      );
+      expect(screen.getByText("Quantitative Feature Telemetry")).toBeDefined();
+      expect(screen.getByText("1D Trailing Return")).toBeDefined();
+      expect(screen.getByText("+5.20%")).toBeDefined();
+      expect(screen.getByText("28.4")).toBeDefined();
+
+      // Click category tab "Trend"
+      const trendTab = screen.getByRole("button", { name: "Trend" });
+      fireEvent.click(trendTab);
+      expect(screen.getByText("ADX (14)")).toBeDefined();
+    });
+  });
+
+  describe("OrderTicketModal", () => {
+    it("renders paper trading warning and order details", () => {
+      render(
+        <OrderTicketModal
+          symbol="SOL"
+          currentPrice={145.5}
+          isOpen={true}
+          onClose={() => {}}
+        />
+      );
+      expect(screen.getByText("Paper Order Ticket — SOL/USDT")).toBeDefined();
+      expect(
+        screen.getByText(
+          "Paper trading simulation only. No live funds or real exchange keys."
+        )
+      ).toBeDefined();
+      expect(screen.getByText("Reference Price")).toBeDefined();
+    });
+
+    it("does not render when isOpen is false", () => {
+      const { container } = render(
+        <OrderTicketModal
+          symbol="SOL"
+          currentPrice={145.5}
+          isOpen={false}
+          onClose={() => {}}
+        />
+      );
+      expect(container.firstChild).toBeNull();
     });
   });
 });

@@ -307,3 +307,6 @@ async def test_openapi_schema_contains_security_and_routes(client: AsyncClient) 
     assert "/api/v1/paper/ledger" in schema["paths"]
     assert "/api/v1/stream/scanner" in schema["paths"]
     assert "/api/v1/auth/token" in schema["paths"]
+    assert "/api/v1/scanner/regime" in schema["paths"]
+    assert "/api/v1/assets/{symbol}/features" in schema["paths"]
+

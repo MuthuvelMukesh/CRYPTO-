@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from apps.api.deps import get_db
 from src.config.constants import AssetClass, Timeframe
-from src.database.models import OHLCV, Asset
+from src.database.models import OHLCV, Asset, Feature
 
 router = APIRouter(prefix="/api/v1", tags=["Assets & Market Data"])
 
@@ -165,3 +165,113 @@ async def get_ohlcv(
         )
         for c in candles_reversed
     ]
+
+
+class AssetFeaturesResponse(BaseModel):
+    asset_id: str
+    symbol: str
+    time: str
+    timeframe: str
+
+    # Momentum
+    return_1d: float | None = None
+    return_3d: float | None = None
+    return_7d: float | None = None
+    return_14d: float | None = None
+    return_30d: float | None = None
+    return_90d: float | None = None
+    momentum_acceleration: float | None = None
+    volatility_adjusted_momentum: float | None = None
+
+    # Relative Strength
+    rs_btc_30d: float | None = None
+    rs_eth_30d: float | None = None
+    rs_sector_30d: float | None = None
+
+    # Trend
+    ema20_ratio: float | None = None
+    ema50_ratio: float | None = None
+    ema200_ratio: float | None = None
+    adx_14: float | None = None
+    atr_14_pct: float | None = None
+
+    # Volume & Liquidity
+    volume_to_20d_avg: float | None = None
+    volume_acceleration: float | None = None
+    turnover_ratio: float | None = None
+    spread_est_bps: float | None = None
+
+    # Volatility & Risk
+    realized_vol_30d: float | None = None
+    downside_vol_30d: float | None = None
+    max_drawdown_90d: float | None = None
+
+
+@router.get(
+    "/assets/{symbol}/features",
+    response_model=AssetFeaturesResponse,
+    summary="Get latest quantitative feature set for asset",
+)
+async def get_asset_features(
+    symbol: str,
+    timeframe: Timeframe = Query(Timeframe.H1, description="Feature timeframe"),
+    db: AsyncSession = Depends(get_db),
+) -> AssetFeaturesResponse:
+    """Retrieve latest calculated feature vector for a specific asset."""
+    # Find asset
+    asset_query = select(Asset).where(Asset.symbol == symbol.upper())
+    asset_res = await db.execute(asset_query)
+    asset = asset_res.scalar_one_or_none()
+
+    if not asset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Asset symbol '{symbol.upper()}' not found in registry.",
+        )
+
+    # Query latest feature
+    feat_query = (
+        select(Feature)
+        .where(Feature.asset_id == asset.id, Feature.timeframe == timeframe.value)
+        .order_by(desc(Feature.time))
+        .limit(1)
+    )
+    feat_res = await db.execute(feat_query)
+    feat = feat_res.scalar_one_or_none()
+
+    if not feat:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Features for asset '{symbol.upper()}' ({timeframe.value}) not found.",
+        )
+
+    return AssetFeaturesResponse(
+        asset_id=feat.asset_id,
+        symbol=asset.symbol,
+        time=feat.time.isoformat(),
+        timeframe=feat.timeframe,
+        return_1d=feat.return_1d,
+        return_3d=feat.return_3d,
+        return_7d=feat.return_7d,
+        return_14d=feat.return_14d,
+        return_30d=feat.return_30d,
+        return_90d=feat.return_90d,
+        momentum_acceleration=feat.momentum_acceleration,
+        volatility_adjusted_momentum=feat.volatility_adjusted_momentum,
+        rs_btc_30d=feat.rs_btc_30d,
+        rs_eth_30d=feat.rs_eth_30d,
+        rs_sector_30d=feat.rs_sector_30d,
+        ema20_ratio=feat.ema20_ratio,
+        ema50_ratio=feat.ema50_ratio,
+        ema200_ratio=feat.ema200_ratio,
+        adx_14=feat.adx_14,
+        atr_14_pct=feat.atr_14_pct,
+        volume_to_20d_avg=feat.volume_to_20d_avg,
+        volume_acceleration=feat.volume_acceleration,
+        turnover_ratio=feat.turnover_ratio,
+        spread_est_bps=feat.spread_est_bps,
+        realized_vol_30d=feat.realized_vol_30d,
+        downside_vol_30d=feat.downside_vol_30d,
+        max_drawdown_90d=feat.max_drawdown_90d,
+    )
+

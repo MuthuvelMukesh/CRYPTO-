@@ -347,6 +347,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/assets/{symbol}/features": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get latest quantitative feature set for asset
+         * @description Retrieve latest calculated feature vector for a specific asset.
+         */
+        get: operations["get_asset_features_api_v1_assets__symbol__features_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/scores": {
         parameters: {
             query?: never;
@@ -1045,6 +1065,63 @@ export interface components {
          * @enum {string}
          */
         AssetClass: "CORE" | "LARGE_CAP_ALT" | "ALTCOIN" | "MID_CAP" | "SMALL_CAP" | "MEME" | "UNKNOWN";
+        /** AssetFeaturesResponse */
+        AssetFeaturesResponse: {
+            /** Asset Id */
+            asset_id: string;
+            /** Symbol */
+            symbol: string;
+            /** Time */
+            time: string;
+            /** Timeframe */
+            timeframe: string;
+            /** Return 1D */
+            return_1d?: number | null;
+            /** Return 3D */
+            return_3d?: number | null;
+            /** Return 7D */
+            return_7d?: number | null;
+            /** Return 14D */
+            return_14d?: number | null;
+            /** Return 30D */
+            return_30d?: number | null;
+            /** Return 90D */
+            return_90d?: number | null;
+            /** Momentum Acceleration */
+            momentum_acceleration?: number | null;
+            /** Volatility Adjusted Momentum */
+            volatility_adjusted_momentum?: number | null;
+            /** Rs Btc 30D */
+            rs_btc_30d?: number | null;
+            /** Rs Eth 30D */
+            rs_eth_30d?: number | null;
+            /** Rs Sector 30D */
+            rs_sector_30d?: number | null;
+            /** Ema20 Ratio */
+            ema20_ratio?: number | null;
+            /** Ema50 Ratio */
+            ema50_ratio?: number | null;
+            /** Ema200 Ratio */
+            ema200_ratio?: number | null;
+            /** Adx 14 */
+            adx_14?: number | null;
+            /** Atr 14 Pct */
+            atr_14_pct?: number | null;
+            /** Volume To 20D Avg */
+            volume_to_20d_avg?: number | null;
+            /** Volume Acceleration */
+            volume_acceleration?: number | null;
+            /** Turnover Ratio */
+            turnover_ratio?: number | null;
+            /** Spread Est Bps */
+            spread_est_bps?: number | null;
+            /** Realized Vol 30D */
+            realized_vol_30d?: number | null;
+            /** Downside Vol 30D */
+            downside_vol_30d?: number | null;
+            /** Max Drawdown 90D */
+            max_drawdown_90d?: number | null;
+        };
         /** AssetResponse */
         AssetResponse: {
             /** Id */
@@ -2660,6 +2737,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CandleResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_asset_features_api_v1_assets__symbol__features_get: {
+        parameters: {
+            query?: {
+                /** @description Feature timeframe */
+                timeframe?: components["schemas"]["Timeframe"];
+            };
+            header?: {
+                "X-API-Key"?: string | null;
+            };
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetFeaturesResponse"];
                 };
             };
             /** @description Validation Error */
