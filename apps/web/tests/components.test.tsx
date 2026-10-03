@@ -15,6 +15,9 @@ import { EquityChart } from "../src/components/charts/EquityChart";
 import { FeatureGlossaryTable } from "../src/components/domain/FeatureGlossaryTable";
 import { OrderTicketModal } from "../src/components/domain/OrderTicketModal";
 import { AccountResetModal } from "../src/components/domain/AccountResetModal";
+import { UnderwaterDrawdownChart } from "../src/components/charts/UnderwaterDrawdownChart";
+import { BacktestMetricsGrid } from "../src/components/domain/BacktestMetricsGrid";
+import { BacktestTradeTable } from "../src/components/domain/BacktestTradeTable";
 
 describe("Shared Data Components", () => {
   describe("DeltaCell", () => {
@@ -280,6 +283,81 @@ describe("Shared Data Components", () => {
       const input = screen.getByPlaceholderText("RESET");
       fireEvent.change(input, { target: { value: "RESET" } });
       expect(submitBtn.hasAttribute("disabled")).toBe(false);
+    });
+  });
+
+  describe("UnderwaterDrawdownChart", () => {
+    it("renders underwater profile and max drawdown", () => {
+      render(
+        <UnderwaterDrawdownChart
+          data={[
+            { time: "2026-10-01T00:00:00Z", drawdown_pct: 0 },
+            { time: "2026-10-02T00:00:00Z", drawdown_pct: -6.4 },
+          ]}
+          maxDrawdown={6.4}
+        />
+      );
+      expect(screen.getByText("Underwater Drawdown Profile")).toBeDefined();
+      expect(screen.getByText("-6.40%")).toBeDefined();
+    });
+
+    it("renders awaiting message when data is insufficient", () => {
+      render(<UnderwaterDrawdownChart data={[]} />);
+      expect(screen.getByText("Awaiting data")).toBeDefined();
+    });
+  });
+
+  describe("BacktestMetricsGrid", () => {
+    it("renders performance metrics with bootstrap CI and cost stress table", () => {
+      render(
+        <BacktestMetricsGrid
+          totalReturnPct={42.5}
+          cagr={18.2}
+          sharpeRatio={1.95}
+          sortinoRatio={2.45}
+          maxDrawdownPct={8.5}
+          winRate={0.62}
+          profitFactor={1.85}
+          benchmarkReturnPct={12.0}
+          metrics={{
+            sharpe_ci_low: 1.6,
+            sharpe_ci_high: 2.3,
+          }}
+        />
+      );
+      expect(screen.getAllByText("+42.50%").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("1.95").length).toBeGreaterThan(0);
+      expect(screen.getByText("CI: [1.60, 2.30]")).toBeDefined();
+      expect(screen.getByText("Cost Stress Resilience (1x / 2x / 3x Fees)")).toBeDefined();
+      expect(screen.getByText("Regime-Split Performance")).toBeDefined();
+    });
+  });
+
+  describe("BacktestTradeTable", () => {
+    it("renders trade rows and flags low confidence trades", () => {
+      render(
+        <BacktestTradeTable
+          trades={[
+            {
+              id: "t-1",
+              asset_id: "SOL",
+              entry_time: "2026-10-01T10:00:00Z",
+              exit_time: "2026-10-02T10:00:00Z",
+              entry_price: 140.0,
+              exit_price: 152.0,
+              pnl_usd: 1200.0,
+              pnl_pct: 8.57,
+              fees_usd: 12.0,
+              low_confidence: true,
+            },
+          ]}
+        />
+      );
+      expect(screen.getByText("Simulated Trade Log (1 fills)")).toBeDefined();
+      expect(screen.getAllByText("SOL").length).toBeGreaterThan(0);
+      expect(screen.getByText("+$1,200.00")).toBeDefined();
+      expect(screen.getByText("+8.57%")).toBeDefined();
+      expect(screen.getByText("LOW_CONF")).toBeDefined();
     });
   });
 });
