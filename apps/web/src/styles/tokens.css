@@ -1,0 +1,90 @@
+:root {
+  /* Dark-first Quant Workstation Palette (Default) */
+  --bg-base: #090d16;
+  --bg-surface: #0f172a;
+  --bg-card: #141e33;
+  --bg-card-hover: #1a2642;
+  --bg-overlay: rgba(9, 13, 22, 0.85);
+
+  --border-subtle: #1e293b;
+  --border-strong: #334155;
+  --border-focus: #38bdf8;
+
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+
+  --color-positive: #10b981;
+  --color-positive-bg: rgba(16, 185, 129, 0.12);
+  --color-positive-border: rgba(16, 185, 129, 0.3);
+
+  --color-negative: #f43f5e;
+  --color-negative-bg: rgba(244, 63, 94, 0.12);
+  --color-negative-border: rgba(244, 63, 94, 0.3);
+
+  --color-warning: #f59e0b;
+  --color-warning-bg: rgba(245, 158, 11, 0.12);
+  --color-warning-border: rgba(245, 158, 11, 0.3);
+
+  --color-info: #0ea5e9;
+  --color-info-bg: rgba(14, 165, 233, 0.12);
+  --color-info-border: rgba(14, 165, 233, 0.3);
+
+  --color-accent: #6366f1;
+  --color-accent-hover: #4f46e5;
+  --color-accent-bg: rgba(99, 102, 241, 0.12);
+
+  /* Market Regimes */
+  --regime-risk-on: #10b981;
+  --regime-neutral: #38bdf8;
+  --regime-risk-off: #f43f5e;
+
+  /* Data Modes */
+  --mode-live: #10b981;
+  --mode-historical: #38bdf8;
+  --mode-synthetic: #f59e0b;
+  --mode-replay: #a855f7;
+
+  /* Geometry & Radii */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+
+[data-theme="light"] {
+  --bg-base: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-card: #f1f5f9;
+  --bg-card-hover: #e2e8f0;
+  --bg-overlay: rgba(248, 250, 252, 0.85);
+
+  --border-subtle: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --border-focus: #0284c7;
+
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --text-dim: #94a3b8;
+
+  --color-positive: #059669;
+  --color-positive-bg: rgba(5, 150, 105, 0.1);
+  --color-positive-border: rgba(5, 150, 105, 0.25);
+
+  --color-negative: #e11d48;
+  --color-negative-bg: rgba(225, 29, 72, 0.1);
+  --color-negative-border: rgba(225, 29, 72, 0.25);
+
+  --color-warning: #d97706;
+  --color-warning-bg: rgba(217, 119, 6, 0.1);
+  --color-warning-border: rgba(217, 119, 6, 0.25);
+
+  --color-info: #0284c7;
+  --color-info-bg: rgba(2, 132, 199, 0.1);
+  --color-info-border: rgba(2, 132, 199, 0.25);
+
+  --color-accent: #4f46e5;
+  --color-accent-hover: #4338ca;
+  --color-accent-bg: rgba(79, 70, 229, 0.1);
+}

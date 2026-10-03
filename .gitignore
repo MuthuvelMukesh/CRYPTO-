@@ -10,8 +10,9 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
+!apps/web/src/lib/
 parts/
 sdist/
 var/
@@ -45,3 +46,9 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Frontend
+.vite/
+apps/web/node_modules/
+apps/web/.next/
+apps/web/out/
