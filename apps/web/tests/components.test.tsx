@@ -22,6 +22,8 @@ import { RollingICChart } from "../src/components/charts/RollingICChart";
 import { DecileBarChart } from "../src/components/charts/DecileBarChart";
 import { DecileTable } from "../src/components/domain/DecileTable";
 import { ModelGateAuditCard } from "../src/components/domain/ModelGateAuditCard";
+import { MemeDetailDrawer } from "../src/components/domain/MemeDetailDrawer";
+import { SectorRotationChart } from "../src/components/charts/SectorRotationChart";
 
 describe("Shared Data Components", () => {
   describe("DeltaCell", () => {
@@ -453,6 +455,101 @@ describe("Shared Data Components", () => {
       expect(screen.getByText("ML Model Production Gating Audit")).toBeDefined();
       expect(screen.getByText("Pre-Production Gate")).toBeDefined();
       expect(screen.getByText(/Audit Candidate Model A/i)).toBeDefined();
+    });
+  });
+
+  describe("MemeDetailDrawer", () => {
+    const mockMeme = {
+      symbol: "BONK",
+      name: "Bonk Dog",
+      chain_id: "solana",
+      dex_id: "raydium",
+      pair_address: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+      price_usd: 0.0000245,
+      liquidity_usd: 1250000,
+      volume_24h_usd: 8500000,
+      volume_acceleration_1h: 2.4,
+      volume_acceleration_5m: 1.8,
+      buy_pressure_ratio: 0.62,
+      pair_age_hours: 72,
+      top_10_holders_pct: 35.5,
+      holder_count: 65000,
+      liquidity_score: 82,
+      volume_momentum_score: 88,
+      buy_pressure_score: 62,
+      holder_distribution_score: 90,
+      gross_score: 80.5,
+      total_penalties: 0,
+      opportunity_score: 80.5,
+      risk_level: "LOW",
+      risk_flags: [],
+      penalties_breakdown: [],
+    };
+
+    it("renders meme details when open", () => {
+      render(
+        <MemeDetailDrawer
+          meme={mockMeme}
+          isOpen={true}
+          onClose={() => {}}
+        />
+      );
+      expect(screen.getByText("BONK")).toBeDefined();
+      expect(screen.getByText("LOW RISK")).toBeDefined();
+      expect(screen.getByText("Score Penalty Waterfall")).toBeDefined();
+      expect(screen.getByText("Gross Score")).toBeDefined();
+      expect(screen.getByText("DEX Microstructure Sub-Scores")).toBeDefined();
+      expect(screen.getByText(/No active risk penalties triggered/i)).toBeDefined();
+    });
+
+    it("does not render when isOpen is false", () => {
+      const { container } = render(
+        <MemeDetailDrawer
+          meme={mockMeme}
+          isOpen={false}
+          onClose={() => {}}
+        />
+      );
+      expect(container.firstChild).toBeNull();
+    });
+  });
+
+  describe("SectorRotationChart", () => {
+    it("renders quadrants and sector points", () => {
+      render(
+        <SectorRotationChart
+          sectors={[
+            {
+              sector_name: "DeFi",
+              asset_count: 12,
+              return_1d: 0.03,
+              return_7d: 0.12,
+              return_30d: 0.25,
+              breadth_pct: 75,
+              volume_change_7d_pct: 0.15,
+              rotation_status: "LEADING",
+            },
+            {
+              sector_name: "Layer 1",
+              asset_count: 8,
+              return_1d: -0.01,
+              return_7d: -0.04,
+              return_30d: 0.08,
+              breadth_pct: 35,
+              volume_change_7d_pct: -0.05,
+              rotation_status: "DECLINING",
+            },
+          ]}
+        />
+      );
+      expect(screen.getByText("Sector Rotation Quadrants (7D Return vs Breadth)")).toBeDefined();
+      expect(screen.getByText("DeFi")).toBeDefined();
+      expect(screen.getByText("Layer 1")).toBeDefined();
+    });
+
+    it("renders awaiting message when sectors are empty", () => {
+      render(<SectorRotationChart sectors={[]} />);
+      expect(screen.getByText(/Awaiting sector rotation telemetry/i)).toBeDefined();
     });
   });
 });
