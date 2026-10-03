@@ -16,6 +16,7 @@ from apps.api.deps import AuthIdentity, get_current_auth, get_db
 from src.config.constants import HealthStatus
 from src.config.settings import get_settings
 from src.database.models import OHLCV, Asset, Feature, Market, ScannerSnapshot, Score
+from src.features.market_regime import classify_market_regime
 
 router = APIRouter(prefix="/api/v1/scanner", tags=["Live Scanner"])
 
@@ -442,3 +443,109 @@ async def get_scanner_snapshots(
             for s in snaps
         ],
     }
+
+
+class MarketRegimeResponse(BaseModel):
+    """Macro market regime classification with breadth, BTC/ETH pricing, and telemetry."""
+
+    data_mode: str
+    regime: str
+    confidence: float
+    btc_above_ema50: bool
+    btc_above_ema200: bool
+    btc_trend_slope: float
+    market_breadth_pct: float
+    eth_btc_ratio_trend: float
+    funding_sentiment: str
+    rationale: list[str]
+    btc_price: float | None = None
+    eth_price: float | None = None
+    btc_return_1d_pct: float | None = None
+    eth_return_1d_pct: float | None = None
+    checked_at: str
+
+
+@router.get(
+    "/regime",
+    response_model=MarketRegimeResponse,
+    summary="Get macro market regime, breadth, and benchmark asset status",
+)
+async def get_market_regime(
+    auth: AuthIdentity = Depends(get_current_auth),
+    db: AsyncSession = Depends(get_db),
+) -> MarketRegimeResponse:
+    """Classify macro regime (RISK_ON, NEUTRAL, RISK_OFF) from real BTC/ETH data."""
+    settings = get_settings()
+    now = datetime.now(UTC)
+
+    # 1. Fetch BTC/USDT candles
+    btc_res = await db.execute(
+        select(OHLCV.close)
+        .where(OHLCV.market_id.like("%BTC%USDT%"))
+        .order_by(desc(OHLCV.time))
+        .limit(100)
+    )
+    btc_closes = [float(c) for c in reversed(btc_res.scalars().all())]
+
+    # 2. Fetch ETH/USDT candles
+    eth_res = await db.execute(
+        select(OHLCV.close)
+        .where(OHLCV.market_id.like("%ETH%USDT%"))
+        .order_by(desc(OHLCV.time))
+        .limit(100)
+    )
+    eth_closes = [float(c) for c in reversed(eth_res.scalars().all())]
+
+    if len(btc_closes) < 10:
+        return MarketRegimeResponse(
+            data_mode=settings.DATA_MODE.value,
+            regime="NEUTRAL",
+            confidence=0.5,
+            btc_above_ema50=False,
+            btc_above_ema200=False,
+            btc_trend_slope=0.0,
+            market_breadth_pct=50.0,
+            eth_btc_ratio_trend=0.0,
+            funding_sentiment="NEUTRAL",
+            rationale=["BOOTSTRAP_FEED"],
+            btc_price=btc_closes[-1] if btc_closes else None,
+            eth_price=eth_closes[-1] if eth_closes else None,
+            btc_return_1d_pct=None,
+            eth_return_1d_pct=None,
+            checked_at=now.isoformat(),
+        )
+
+    reg = classify_market_regime(
+        btc_closes=btc_closes,
+        eth_closes=eth_closes if len(eth_closes) >= 10 else None,
+    )
+
+    btc_price = btc_closes[-1] if btc_closes else None
+    eth_price = eth_closes[-1] if eth_closes else None
+
+    # Calculate 1D returns if at least 24 bars are available
+    btc_ret_1d: float | None = None
+    if len(btc_closes) >= 25 and btc_closes[-25] > 0:
+        btc_ret_1d = round(((btc_closes[-1] - btc_closes[-25]) / btc_closes[-25]) * 100, 2)
+
+    eth_ret_1d: float | None = None
+    if len(eth_closes) >= 25 and eth_closes[-25] > 0:
+        eth_ret_1d = round(((eth_closes[-1] - eth_closes[-25]) / eth_closes[-25]) * 100, 2)
+
+    return MarketRegimeResponse(
+        data_mode=settings.DATA_MODE.value,
+        regime=reg.regime.value,
+        confidence=round(reg.confidence, 2),
+        btc_above_ema50=reg.btc_above_ema50,
+        btc_above_ema200=reg.btc_above_ema200,
+        btc_trend_slope=round(reg.btc_trend_slope, 4),
+        market_breadth_pct=round(reg.market_breadth_pct, 1),
+        eth_btc_ratio_trend=round(reg.eth_btc_ratio_trend, 4),
+        funding_sentiment=reg.funding_sentiment,
+        rationale=reg.rationale,
+        btc_price=btc_price,
+        eth_price=eth_price,
+        btc_return_1d_pct=btc_ret_1d,
+        eth_return_1d_pct=eth_ret_1d,
+        checked_at=now.isoformat(),
+    )
