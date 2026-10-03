@@ -134,6 +134,26 @@
         }
       }
     },
+    "/health/system": {
+      "get": {
+        "tags": [
+          "Health & Diagnostics"
+        ],
+        "summary": "Comprehensive platform operational and infrastructure summary",
+        "description": "Return complete system state: ingestion lag, scanner status, job queue, and ledger health.",
+        "operationId": "get_system_summary_health_system_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/system": {
       "get": {
         "tags": [

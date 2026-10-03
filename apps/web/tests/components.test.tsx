@@ -18,6 +18,10 @@ import { AccountResetModal } from "../src/components/domain/AccountResetModal";
 import { UnderwaterDrawdownChart } from "../src/components/charts/UnderwaterDrawdownChart";
 import { BacktestMetricsGrid } from "../src/components/domain/BacktestMetricsGrid";
 import { BacktestTradeTable } from "../src/components/domain/BacktestTradeTable";
+import { RollingICChart } from "../src/components/charts/RollingICChart";
+import { DecileBarChart } from "../src/components/charts/DecileBarChart";
+import { DecileTable } from "../src/components/domain/DecileTable";
+import { ModelGateAuditCard } from "../src/components/domain/ModelGateAuditCard";
 
 describe("Shared Data Components", () => {
   describe("DeltaCell", () => {
@@ -358,6 +362,97 @@ describe("Shared Data Components", () => {
       expect(screen.getByText("+$1,200.00")).toBeDefined();
       expect(screen.getByText("+8.57%")).toBeDefined();
       expect(screen.getByText("LOW_CONF")).toBeDefined();
+    });
+  });
+
+  describe("RollingICChart", () => {
+    it("renders rolling IC chart with points and horizon", () => {
+      render(
+        <RollingICChart
+          points={[
+            { date: "2026-10-01", pearson_ic: 0.15, spearman_ic: 0.18, sample_size: 50 },
+            { date: "2026-10-02", pearson_ic: 0.12, spearman_ic: 0.14, sample_size: 50 },
+          ]}
+          horizon="1d"
+        />
+      );
+      expect(screen.getByText("Rolling Information Coefficient (IC)")).toBeDefined();
+      expect(screen.getByText("Horizon: 1D")).toBeDefined();
+      expect(screen.getByText("Pearson IC")).toBeDefined();
+      expect(screen.getByText("Spearman Rank IC")).toBeDefined();
+    });
+
+    it("renders awaiting message when points are empty", () => {
+      render(<RollingICChart points={[]} />);
+      expect(screen.getByText(/Awaiting Information Coefficient/i)).toBeDefined();
+    });
+  });
+
+  describe("DecileBarChart", () => {
+    it("renders decile bars and monotonicity spread", () => {
+      render(
+        <DecileBarChart
+          deciles={[
+            { decile: 1, mean_forward_return_pct: -2.5, sample_size: 35 },
+            { decile: 10, mean_forward_return_pct: 4.8, sample_size: 35 },
+          ]}
+          monotonicitySpreadPct={7.3}
+          horizon="1d"
+        />
+      );
+      expect(screen.getByText("Forward Return by Score Decile (D1 – D10)")).toBeDefined();
+      expect(screen.getByText("+7.30%")).toBeDefined();
+      expect(screen.getAllByText("D1").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("D10").length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("DecileTable", () => {
+    it("renders decile rows and small-sample warning", () => {
+      render(
+        <DecileTable
+          deciles={[
+            {
+              decile: 1,
+              score_min: 0,
+              score_max: 20,
+              sample_size: 15, // Below threshold 30
+              mean_forward_return_pct: -1.5,
+              median_forward_return_pct: -1.2,
+              std_forward_return_pct: 3.4,
+              annualized_return_pct: -15.0,
+              positive_return_ratio: 0.38,
+            },
+            {
+              decile: 10,
+              score_min: 80,
+              score_max: 100,
+              sample_size: 45,
+              mean_forward_return_pct: 3.8,
+              median_forward_return_pct: 3.2,
+              std_forward_return_pct: 4.1,
+              annualized_return_pct: 42.0,
+              positive_return_ratio: 0.65,
+            },
+          ]}
+          minSamplesThreshold={30}
+        />
+      );
+      expect(screen.getByText("Score Decile Statistical Breakdown")).toBeDefined();
+      expect(screen.getByText("D1")).toBeDefined();
+      expect(screen.getByText("D10")).toBeDefined();
+      expect(screen.getByText("+3.80%")).toBeDefined();
+      expect(screen.getByText("-1.50%")).toBeDefined();
+      expect(screen.getByText("65.0%")).toBeDefined();
+    });
+  });
+
+  describe("ModelGateAuditCard", () => {
+    it("renders production gating audit controls", () => {
+      render(<ModelGateAuditCard />);
+      expect(screen.getByText("ML Model Production Gating Audit")).toBeDefined();
+      expect(screen.getByText("Pre-Production Gate")).toBeDefined();
+      expect(screen.getByText(/Audit Candidate Model A/i)).toBeDefined();
     });
   });
 });

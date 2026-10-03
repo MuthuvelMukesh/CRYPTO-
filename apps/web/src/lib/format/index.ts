@@ -131,6 +131,28 @@ export function formatScore(
 }
 
 /**
+ * Format generic number with fixed decimals and thousands separators.
+ */
+export function formatNumber(
+  value: number | string | null | undefined,
+  decimals = 2
+): string {
+  if (value === null || value === undefined || value === "") {
+    return EMPTY_FALLBACK;
+  }
+
+  const num = typeof value === "string" ? Number.parseFloat(value) : value;
+  if (!Number.isFinite(num)) {
+    return EMPTY_FALLBACK;
+  }
+
+  return num.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+/**
  * Format ISO datetime string or Date into compact relative time ("2m ago", "1h ago").
  */
 export function formatRelativeTime(

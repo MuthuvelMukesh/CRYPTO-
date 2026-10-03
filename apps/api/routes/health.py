@@ -190,6 +190,7 @@ async def get_metrics():
 
 
 @router.get("/system", summary="Comprehensive platform operational and infrastructure summary")
+@router.get("/health/system", summary="Comprehensive platform operational and infrastructure summary")
 async def get_system_summary():
     """Return complete system state: ingestion lag, scanner status, job queue, and ledger health."""
     db_health = await check_db_health()
