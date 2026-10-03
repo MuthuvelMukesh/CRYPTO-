@@ -108,7 +108,7 @@ export function OrderTicketModal({
 
       const { data, error } = await apiClient.POST("/api/v1/paper/orders", {
         body: {
-          account_id: "default",
+          account_id: "default_paper",
           symbol: symbol.toUpperCase(),
           side: side,
           order_type: orderType,

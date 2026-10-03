@@ -11,8 +11,10 @@ import {
 } from "../src/components/data";
 import { RegimeBadge } from "../src/components/domain/RegimeBadge";
 import { FactorRadarChart } from "../src/components/charts/FactorRadarChart";
+import { EquityChart } from "../src/components/charts/EquityChart";
 import { FeatureGlossaryTable } from "../src/components/domain/FeatureGlossaryTable";
 import { OrderTicketModal } from "../src/components/domain/OrderTicketModal";
+import { AccountResetModal } from "../src/components/domain/AccountResetModal";
 
 describe("Shared Data Components", () => {
   describe("DeltaCell", () => {
@@ -242,6 +244,42 @@ describe("Shared Data Components", () => {
         />
       );
       expect(container.firstChild).toBeNull();
+    });
+  });
+
+  describe("EquityChart", () => {
+    it("renders equity curve with performance metrics", () => {
+      render(
+        <EquityChart
+          data={[
+            { time: "2026-10-01T00:00:00Z", equity: 100000, cash: 100000 },
+            { time: "2026-10-02T00:00:00Z", equity: 105000, cash: 95000 },
+          ]}
+          peakEquity={105000}
+          currentDrawdown={0}
+        />
+      );
+      expect(screen.getByText("Portfolio Equity Curve")).toBeDefined();
+      expect(screen.getByText("+5.00%")).toBeDefined();
+      expect(screen.getAllByText("$105,000.00").length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("AccountResetModal", () => {
+    it("requires typed confirmation 'RESET' to enable submit button", () => {
+      render(
+        <AccountResetModal
+          isOpen={true}
+          onClose={() => {}}
+        />
+      );
+      expect(screen.getByText("Reset Virtual Paper Account")).toBeDefined();
+      const submitBtn = screen.getByRole("button", { name: /Confirm Account Reset/i });
+      expect(submitBtn.hasAttribute("disabled")).toBe(true);
+
+      const input = screen.getByPlaceholderText("RESET");
+      fireEvent.change(input, { target: { value: "RESET" } });
+      expect(submitBtn.hasAttribute("disabled")).toBe(false);
     });
   });
 });
