@@ -75,6 +75,14 @@ async def init_db() -> None:
                 await conn.execute(text("ALTER TABLE paper_orders ADD COLUMN idempotency_key VARCHAR(64)"))
             except Exception:
                 pass  # already exists or new db
+            try:
+                await conn.execute(text("ALTER TABLE paper_orders ADD COLUMN notes VARCHAR(512)"))
+            except Exception:
+                pass
+            try:
+                await conn.execute(text("ALTER TABLE paper_orders ADD COLUMN tags VARCHAR(256)"))
+            except Exception:
+                pass
     logger.info("database_tables_initialized")
 
 

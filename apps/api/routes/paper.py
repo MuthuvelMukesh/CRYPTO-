@@ -23,6 +23,7 @@ from src.paper.models import (
     PositionResponse,
 )
 from src.paper.reconciliation import ReconciliationResult, reconcile_account_ledger
+from src.utils.time import utc_now
 
 router = APIRouter(prefix="/api/v1/paper", tags=["Paper Trading"])
 broker = PaperBroker()
@@ -253,3 +254,67 @@ async def reset_paper_account(
     """Reset virtual account cash balance to initial capital and liquidate positions."""
     await broker.reset_account(db, account_id=req.account_id, starting_balance=req.starting_balance)
     return {"status": "SUCCESS", "message": f"Account '{req.account_id}' reset to ${req.starting_balance:,.2f}"}
+
+
+class JournalUpdateRequest(BaseModel):
+    notes: str = ""
+    tags: str = ""
+
+
+class JournalResponse(BaseModel):
+    order_id: str
+    symbol: str
+    side: str
+    quantity: float
+    notes: str
+    tags: str
+    updated_at: str
+
+
+@router.get("/orders/{order_id}/journal", response_model=JournalResponse, summary="Get trade journal entry for an order")
+async def get_order_journal(
+    order_id: str,
+    auth: AuthIdentity = Depends(get_current_auth),
+    db: AsyncSession = Depends(get_db),
+) -> JournalResponse:
+    """Retrieve post-trade journal entry and tags for paper order execution."""
+    res = await db.execute(select(PaperOrder).where(PaperOrder.id == order_id))
+    order = res.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Order '{order_id}' not found")
+    return JournalResponse(
+        order_id=order.id,
+        symbol=order.asset_id,
+        side=order.side,
+        quantity=float(order.quantity),
+        notes=order.notes or "",
+        tags=order.tags or "",
+        updated_at=order.updated_at.isoformat() if order.updated_at else "",
+    )
+
+
+@router.patch("/orders/{order_id}/journal", response_model=JournalResponse, summary="Update trade journal notes and tags")
+async def update_order_journal(
+    order_id: str,
+    req: JournalUpdateRequest,
+    auth: AuthIdentity = Depends(get_current_auth),
+    db: AsyncSession = Depends(get_db),
+) -> JournalResponse:
+    """Record trader rationale, mistake tags, and trade journal notes."""
+    res = await db.execute(select(PaperOrder).where(PaperOrder.id == order_id))
+    order = res.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Order '{order_id}' not found")
+    order.notes = req.notes
+    order.tags = req.tags
+    order.updated_at = utc_now()
+    await db.commit()
+    return JournalResponse(
+        order_id=order.id,
+        symbol=order.asset_id,
+        side=order.side,
+        quantity=float(order.quantity),
+        notes=order.notes or "",
+        tags=order.tags or "",
+        updated_at=order.updated_at.isoformat(),
+    )

@@ -156,3 +156,33 @@ async def simulate_alert(
     )
 
     return alert
+
+
+@router.patch("/{alert_id}/read", summary="Mark alert as acknowledged and read")
+async def mark_alert_read(
+    alert_id: str,
+    auth: AuthIdentity = Depends(get_current_auth),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Mark an alert notification as read."""
+    res = await db.execute(select(AlertModel).where(AlertModel.id == alert_id))
+    record = res.scalar_one_or_none()
+    if record:
+        record.is_read = True
+        await db.commit()
+    return {"id": alert_id, "is_read": True}
+
+
+@router.delete("/{alert_id}", summary="Dismiss or delete alert from inbox")
+async def delete_alert(
+    alert_id: str,
+    auth: AuthIdentity = Depends(get_current_auth),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Dismiss and remove an alert from the active inbox."""
+    res = await db.execute(select(AlertModel).where(AlertModel.id == alert_id))
+    record = res.scalar_one_or_none()
+    if record:
+        await db.delete(record)
+        await db.commit()
+    return {"id": alert_id, "deleted": True}

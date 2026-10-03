@@ -19,14 +19,30 @@ class AlertEngine:
         self,
         dispatchers: list[BaseAlertDispatcher] | None = None,
         cooldown_minutes: int = 60,
+        quiet_hours_enabled: bool = False,
+        quiet_hours_start: str = "22:00",
+        quiet_hours_end: str = "06:00",
     ) -> None:
         self.dispatchers: list[BaseAlertDispatcher] = dispatchers or [ConsoleDispatcher()]
         self.cooldown_minutes = cooldown_minutes
+        self.quiet_hours_enabled = quiet_hours_enabled
+        self.quiet_hours_start = quiet_hours_start
+        self.quiet_hours_end = quiet_hours_end
         self._recent_alerts: dict[tuple[str, str], datetime] = {}  # (symbol, alert_type) -> last_time
 
     def add_dispatcher(self, dispatcher: BaseAlertDispatcher) -> None:
         """Register a notification channel."""
         self.dispatchers.append(dispatcher)
+
+    def _is_quiet_hours(self, current_time: datetime) -> bool:
+        """Check if current time falls within configured quiet hours."""
+        if not self.quiet_hours_enabled:
+            return False
+        current_hm = current_time.strftime("%H:%M")
+        if self.quiet_hours_start <= self.quiet_hours_end:
+            return self.quiet_hours_start <= current_hm <= self.quiet_hours_end
+        # Overnight window (e.g. 22:00 to 06:00)
+        return current_hm >= self.quiet_hours_start or current_hm <= self.quiet_hours_end
 
     def _is_rate_limited(self, symbol: str, alert_type: AlertType, current_time: datetime) -> bool:
         """Check if an alert for this symbol and type was emitted within the cooldown window."""
@@ -45,9 +61,14 @@ class AlertEngine:
         message: str,
         details: dict[str, Any] | None = None,
     ) -> AlertPayload | None:
-        """Deliver alert to all registered dispatchers if not rate-limited."""
+        """Deliver alert to all registered dispatchers if not rate-limited or muted by quiet hours."""
         now = utc_now()
         target_sym = symbol or "GLOBAL"
+
+        # Suppress non-critical alerts during quiet hours
+        if severity != AlertSeverity.CRITICAL and self._is_quiet_hours(now):
+            logger.debug("alert_suppressed_quiet_hours", symbol=target_sym, severity=severity)
+            return None
 
         if self._is_rate_limited(target_sym, alert_type, now):
             logger.debug("alert_throttled", symbol=target_sym, alert_type=alert_type)
