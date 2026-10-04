@@ -121,7 +121,10 @@ export default function PortfolioPage() {
   const [ledger, setLedger] = useState<LedgerRecord[]>([]);
   const [reconciliation, setReconciliation] = useState<ReconciliationState | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"positions" | "orders" | "fills" | "ledger">("positions");
+  const [activeTab, setActiveTab] = useState<"positions" | "orders" | "fills" | "ledger" | "analytics">("positions");
+  const [stressData, setStressData] = useState<any>(null);
+  const [sectorData, setSectorData] = useState<any>(null);
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string>("btc_minus_20");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -187,6 +190,24 @@ export default function PortfolioPage() {
         });
         if (ledgRes.data && "events" in ledgRes.data) {
           setLedger((ledgRes.data as any).events || []);
+        }
+      } catch {
+        // Non-blocking
+      }
+
+      // 5. Stress test & Sector exposure analytics
+      try {
+        const [stressRes, secRes] = await Promise.all([
+          fetch("/api/proxy/api/v1/analytics/portfolio-stress?account_id=default_paper"),
+          fetch("/api/proxy/api/v1/analytics/sector-exposure?account_id=default_paper"),
+        ]);
+        if (stressRes.ok) {
+          const sJson = await stressRes.json();
+          setStressData(sJson);
+        }
+        if (secRes.ok) {
+          const secJson = await secRes.json();
+          setSectorData(secJson);
         }
       } catch {
         // Non-blocking
@@ -474,6 +495,7 @@ export default function PortfolioPage() {
             <div className="flex gap-2">
               {[
                 { id: "positions", label: "Open Positions", count: summary?.open_positions?.length ?? 0 },
+                { id: "analytics", label: "Stress Test & Sector Risk", count: "v3.0" },
                 { id: "orders", label: "Order History", count: orders.length },
                 { id: "fills", label: "Execution Fills", count: fills.length },
                 { id: "ledger", label: "Audit Ledger", count: ledger.length },
@@ -781,6 +803,238 @@ export default function PortfolioPage() {
                     </table>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Tab 5: Stress Test & Risk Analytics */}
+            {activeTab === "analytics" && (
+              <div className="p-5 space-y-6">
+                {/* Analytics Metric Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="p-4 rounded-xl border border-border/40 bg-accent/5 space-y-1">
+                    <span className="text-[11px] font-mono uppercase text-muted-foreground">
+                      1-Day 95% Parametric VaR
+                    </span>
+                    <div className="text-xl font-bold font-mono text-rose-400">
+                      {stressData?.var_95_daily_usd !== null && stressData?.var_95_daily_usd !== undefined
+                        ? `-$${formatPrice(stressData.var_95_daily_usd)}`
+                        : "—"}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">
+                      {stressData?.var_95_daily_pct !== null && stressData?.var_95_daily_pct !== undefined
+                        ? `~${stressData.var_95_daily_pct.toFixed(2)}% of equity at risk`
+                        : "Zero open positions"}
+                    </span>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-border/40 bg-accent/5 space-y-1">
+                    <span className="text-[11px] font-mono uppercase text-muted-foreground">
+                      Herfindahl Concentration (HHI)
+                    </span>
+                    <div className="text-xl font-bold font-mono text-foreground flex items-center gap-2">
+                      {sectorData?.herfindahl_index !== undefined ? sectorData.herfindahl_index.toFixed(4) : "—"}
+                      {sectorData?.is_concentrated ? (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-semibold">
+                          CONCENTRATED
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold">
+                          DIVERSIFIED
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">Concentration cap &lt; 0.25</span>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-border/40 bg-accent/5 space-y-1">
+                    <span className="text-[11px] font-mono uppercase text-muted-foreground">
+                      Gross / Net Leverage
+                    </span>
+                    <div className="text-xl font-bold font-mono text-cyan-300">
+                      {sectorData?.gross_exposure_pct !== undefined
+                        ? `${sectorData.gross_exposure_pct.toFixed(1)}%`
+                        : "—"}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">Long-only research invariant</span>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-border/40 bg-accent/5 space-y-1">
+                    <span className="text-[11px] font-mono uppercase text-muted-foreground">
+                      Correlation Analysis
+                    </span>
+                    <div className="pt-0.5">
+                      <Link
+                        href="/assets/compare"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-400 hover:text-cyan-300 hover:underline"
+                      >
+                        Open Correlation Lab &rarr;
+                      </Link>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">Multi-asset Pearson heatmap</span>
+                  </div>
+                </div>
+
+                {/* Macro Stress Scenario Simulation */}
+                <div className="p-5 rounded-xl border border-border/60 bg-card/60 backdrop-blur-sm space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/40 pb-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-400" />
+                        Macro Stress Test Scenario Simulation
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Simulate adverse market shocks on current paper positions without live risk.
+                      </p>
+                    </div>
+                    <span className="text-xs font-mono px-2.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                      {stressData?.data_mode || "HISTORICAL"}
+                    </span>
+                  </div>
+
+                  {/* Scenario Pills */}
+                  <div className="flex flex-wrap gap-2">
+                    {stressData?.scenarios?.map((sc: any) => (
+                      <button
+                        key={sc.scenario_id}
+                        type="button"
+                        onClick={() => setSelectedScenarioId(sc.scenario_id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                          selectedScenarioId === sc.scenario_id
+                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
+                            : "bg-accent/20 text-muted-foreground hover:text-foreground hover:bg-accent/40 border border-border/40"
+                        }`}
+                      >
+                        {sc.name}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Selected Scenario Details */}
+                  {(() => {
+                    const sc = stressData?.scenarios?.find((s: any) => s.scenario_id === selectedScenarioId);
+                    if (!sc) return null;
+                    return (
+                      <div className="space-y-4 pt-2">
+                        <div className="p-3.5 rounded-lg bg-accent/15 border border-border/40 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div>
+                            <div className="text-xs font-semibold text-foreground">{sc.name}</div>
+                            <div className="text-xs text-muted-foreground mt-0.5">{sc.description}</div>
+                          </div>
+                          <div className="flex items-center gap-6">
+                            <div className="text-right">
+                              <span className="text-[10px] uppercase text-muted-foreground block font-mono">
+                                Stressed Equity
+                              </span>
+                              <span className="text-base font-bold font-mono text-foreground">
+                                ${formatPrice(sc.stressed_equity_usd)}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[10px] uppercase text-muted-foreground block font-mono">
+                                Simulated Impact
+                              </span>
+                              <span
+                                className={`text-base font-bold font-mono ${
+                                  sc.pnl_impact_usd >= 0 ? "text-emerald-400" : "text-rose-400"
+                                }`}
+                              >
+                                {sc.pnl_impact_usd >= 0 ? "+" : ""}${formatPrice(sc.pnl_impact_usd)} ({sc.drawdown_pct >= 0 ? "+" : ""}{sc.drawdown_pct.toFixed(2)}%)
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Position Impacts Table */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="border-b border-border/40 text-[11px] font-mono uppercase text-muted-foreground">
+                                <th className="py-2 px-3">Symbol</th>
+                                <th className="py-2 px-3 text-right">Current Value</th>
+                                <th className="py-2 px-3 text-right">Stressed Value</th>
+                                <th className="py-2 px-3 text-right">PnL Impact ($)</th>
+                                <th className="py-2 px-3 text-right">Shock (%)</th>
+                                <th className="py-2 px-3 text-right">Risk Contrib (%)</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sc.position_impacts?.length === 0 ? (
+                                <tr>
+                                  <td colSpan={6} className="py-4 text-center text-muted-foreground">
+                                    No open positions to stress test.
+                                  </td>
+                                </tr>
+                              ) : (
+                                sc.position_impacts?.map((pi: any) => (
+                                  <tr
+                                    key={pi.symbol}
+                                    className="border-b border-border/20 hover:bg-accent/15 transition-colors font-mono"
+                                  >
+                                    <td className="py-2 px-3 font-bold text-foreground">{pi.symbol}</td>
+                                    <td className="py-2 px-3 text-right text-muted-foreground">
+                                      ${formatPrice(pi.current_value_usd)}
+                                    </td>
+                                    <td className="py-2 px-3 text-right text-foreground font-semibold">
+                                      ${formatPrice(pi.stressed_value_usd)}
+                                    </td>
+                                    <td
+                                      className={`py-2 px-3 text-right font-bold ${
+                                        pi.impact_usd >= 0 ? "text-emerald-400" : "text-rose-400"
+                                      }`}
+                                    >
+                                      {pi.impact_usd >= 0 ? "+" : ""}${formatPrice(pi.impact_usd)}
+                                    </td>
+                                    <td
+                                      className={`py-2 px-3 text-right ${
+                                        pi.impact_pct >= 0 ? "text-emerald-400" : "text-rose-400"
+                                      }`}
+                                    >
+                                      {pi.impact_pct >= 0 ? "+" : ""}{pi.impact_pct.toFixed(1)}%
+                                    </td>
+                                    <td className="py-2 px-3 text-right text-cyan-300">
+                                      {pi.risk_contribution_pct.toFixed(1)}%
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Sector Allocation Breakdown */}
+                <div className="p-5 rounded-xl border border-border/60 bg-card/60 backdrop-blur-sm space-y-4">
+                  <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                    <Briefcase className="w-4 h-4 text-cyan-400" />
+                    Portfolio Sector Allocation
+                  </h3>
+                  <div className="space-y-3">
+                    {sectorData?.sectors?.map((sec: any) => (
+                      <div key={sec.sector} className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-medium text-foreground flex items-center gap-2">
+                            {sec.sector}
+                            <span className="text-[10px] text-muted-foreground font-mono">
+                              ({sec.symbols.join(", ")})
+                            </span>
+                          </span>
+                          <span className="font-mono text-muted-foreground">
+                            ${formatPrice(sec.value_usd)} ({sec.weight_pct.toFixed(1)}%)
+                          </span>
+                        </div>
+                        <div className="h-2 w-full bg-accent/20 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 rounded-full transition-all duration-300"
+                            style={{ width: `${Math.min(100, Math.max(0, sec.weight_pct))}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </div>

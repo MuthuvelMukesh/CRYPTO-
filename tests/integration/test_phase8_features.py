@@ -143,3 +143,60 @@ async def test_paper_trade_journal(test_app):
         )
         assert get_res.status_code == 200
         assert get_res.json()["notes"] == "Momentum entry after 4h candle close above 20 EMA."
+
+
+@pytest.mark.asyncio
+async def test_backtest_parameter_sweep(test_app):
+    """Verify in-sample / out-of-sample hyperparameter grid sweep."""
+    headers = {"X-API-Key": "dev-api-key-researcher-1"}
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+        sweep_res = await client.post(
+            "/api/v1/backtests/sweep",
+            headers=headers,
+            json={
+                "strategy_name": "MomentumBreakout",
+                "symbols": ["BTC", "ETH"],
+                "train_ratio": 0.7,
+                "param_x_name": "stop_loss_pct",
+                "param_x_values": [0.05, 0.10],
+                "param_y_name": "take_profit_pct",
+                "param_y_values": [0.20, 0.30],
+                "base_parameters": {"top_n_assets": 2},
+            },
+        )
+        assert sweep_res.status_code == 200, sweep_res.text
+        data = sweep_res.json()
+        assert data["strategy_name"] == "MomentumBreakout"
+        assert len(data["cells"]) == 4
+        assert "train_sharpe" in data["cells"][0]
+        assert "test_sharpe" in data["cells"][0]
+        assert "best_is_params" in data
+        assert "best_oos_params" in data
+        assert data["data_mode"] == "HISTORICAL"
+
+
+@pytest.mark.asyncio
+async def test_backtest_report_html_export(test_app):
+    """Verify reproducible standalone HTML report generation and cost stress table."""
+    headers = {"X-API-Key": "dev-api-key-researcher-1"}
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+        # Run a backtest synchronously to persist record
+        run_res = await client.post(
+            "/api/v1/backtests/run",
+            headers=headers,
+            json={
+                "strategy_name": "MomentumBreakout",
+                "symbols": ["BTC", "ETH"],
+            },
+        )
+        assert run_res.status_code == 200, run_res.text
+        backtest_id = run_res.json()["id"]
+
+        # Request HTML report
+        report_res = await client.get(f"/api/v1/backtests/{backtest_id}/report", headers=headers)
+        assert report_res.status_code == 200, report_res.text
+        assert "text/html" in report_res.headers["content-type"]
+        assert "Quantitative Backtest Audit Report" in report_res.text
+        assert "Transaction Cost & Slippage Sensitivity Stress Test" in report_res.text
+        assert "HISTORICAL DATA" in report_res.text
+

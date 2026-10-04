@@ -98,7 +98,6 @@ async def test_telegram_and_email_dispatchers() -> None:
 
 @pytest.mark.asyncio
 async def test_alert_engine_quiet_hours_suppression() -> None:
-    from datetime import datetime, UTC
 
     # Create engine with quiet hours enabled 00:00 to 23:59 (all day)
     engine = AlertEngine(

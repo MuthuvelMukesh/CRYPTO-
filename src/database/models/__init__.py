@@ -67,4 +67,5 @@ __all__ = [
     "Tokenomics",
     "Trade",
     "UniverseSnapshot",
+    "WatchlistItem",
 ]

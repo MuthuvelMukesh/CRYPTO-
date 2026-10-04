@@ -1,6 +1,7 @@
 """User watchlists, custom asset tags, and research bookmarks."""
 
 from datetime import datetime
+
 from sqlalchemy import DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column
 

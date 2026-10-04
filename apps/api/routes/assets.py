@@ -297,7 +297,6 @@ async def get_watchlist(
     db: AsyncSession = Depends(get_db),
 ):
     """Retrieve user-tracked watchlist assets with custom tags and notes."""
-    import uuid
     from src.database.models.watchlist import WatchlistItem
 
     res = await db.execute(select(WatchlistItem).order_by(desc(WatchlistItem.created_at)))
@@ -323,6 +322,7 @@ async def add_to_watchlist(
 ):
     """Add or update an asset in the user watchlist."""
     import uuid
+
     from src.database.models.watchlist import WatchlistItem
 
     symbol = req.symbol.upper().strip()
