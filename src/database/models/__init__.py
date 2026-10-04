@@ -30,6 +30,7 @@ from src.database.models.paper import (
 )
 from src.database.models.scanner import ScannerSnapshot, UniverseSnapshot
 from src.database.models.scoring import Score, Signal
+from src.database.models.watchlist import WatchlistItem
 
 __all__ = [
     "Alert",
@@ -66,4 +67,5 @@ __all__ = [
     "Tokenomics",
     "Trade",
     "UniverseSnapshot",
+    "WatchlistItem",
 ]

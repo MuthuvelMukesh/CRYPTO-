@@ -275,3 +275,105 @@ async def get_asset_features(
         max_drawdown_90d=feat.max_drawdown_90d,
     )
 
+
+class WatchlistResponse(BaseModel):
+    id: str
+    user_id: str
+    symbol: str
+    tags: str
+    notes: str
+    created_at: str
+
+
+class AddWatchlistRequest(BaseModel):
+    symbol: str
+    tags: str = ""
+    notes: str = ""
+
+
+@router.get("/watchlist", response_model=list[WatchlistResponse], summary="Get user watchlist of monitored assets")
+@router.get("/assets/watchlist", response_model=list[WatchlistResponse], summary="Get user watchlist of monitored assets")
+async def get_watchlist(
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve user-tracked watchlist assets with custom tags and notes."""
+    from src.database.models.watchlist import WatchlistItem
+
+    res = await db.execute(select(WatchlistItem).order_by(desc(WatchlistItem.created_at)))
+    items = res.scalars().all()
+    return [
+        WatchlistResponse(
+            id=i.id,
+            user_id=i.user_id,
+            symbol=i.symbol,
+            tags=i.tags or "",
+            notes=i.notes or "",
+            created_at=i.created_at.isoformat() if i.created_at else "",
+        )
+        for i in items
+    ]
+
+
+@router.post("/watchlist", response_model=WatchlistResponse, summary="Add asset to user watchlist with tags and notes")
+@router.post("/assets/watchlist", response_model=WatchlistResponse, summary="Add asset to user watchlist with tags and notes")
+async def add_to_watchlist(
+    req: AddWatchlistRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Add or update an asset in the user watchlist."""
+    import uuid
+
+    from src.database.models.watchlist import WatchlistItem
+
+    symbol = req.symbol.upper().strip()
+    res = await db.execute(select(WatchlistItem).where(WatchlistItem.symbol == symbol))
+    existing = res.scalar_one_or_none()
+    if existing:
+        existing.tags = req.tags
+        existing.notes = req.notes
+        await db.commit()
+        return WatchlistResponse(
+            id=existing.id,
+            user_id=existing.user_id,
+            symbol=existing.symbol,
+            tags=existing.tags or "",
+            notes=existing.notes or "",
+            created_at=existing.created_at.isoformat() if existing.created_at else "",
+        )
+
+    item = WatchlistItem(
+        id=str(uuid.uuid4()),
+        user_id="default_user",
+        symbol=symbol,
+        tags=req.tags,
+        notes=req.notes,
+    )
+    db.add(item)
+    await db.commit()
+    return WatchlistResponse(
+        id=item.id,
+        user_id=item.user_id,
+        symbol=item.symbol,
+        tags=item.tags or "",
+        notes=item.notes or "",
+        created_at=item.created_at.isoformat() if item.created_at else "",
+    )
+
+
+@router.delete("/watchlist/{symbol}", summary="Remove asset from user watchlist")
+@router.delete("/assets/watchlist/{symbol}", summary="Remove asset from user watchlist")
+async def remove_from_watchlist(
+    symbol: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove an asset from user watchlist."""
+    from src.database.models.watchlist import WatchlistItem
+
+    sym = symbol.upper().strip()
+    res = await db.execute(select(WatchlistItem).where(WatchlistItem.symbol == sym))
+    item = res.scalar_one_or_none()
+    if item:
+        await db.delete(item)
+        await db.commit()
+    return {"symbol": sym, "removed": True}
+

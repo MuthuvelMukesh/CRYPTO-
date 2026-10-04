@@ -6,7 +6,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.models import Asset, Feature, Market, OHLCV
+from src.database.models import OHLCV, Asset, Feature, Market
 
 
 @pytest.mark.asyncio

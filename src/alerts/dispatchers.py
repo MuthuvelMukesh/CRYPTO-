@@ -105,7 +105,67 @@ class WebhookDispatcher(BaseAlertDispatcher):
             return False
 
 
+class TelegramDispatcher(BaseAlertDispatcher):
+    """Dispatches alerts to Telegram channel or chat via Bot API."""
+
+    def __init__(self, bot_token: str | None = None, chat_id: str | None = None, timeout_sec: float = 3.0) -> None:
+        self.bot_token = bot_token
+        self.chat_id = chat_id
+        self.timeout_sec = timeout_sec
+
+    async def dispatch(self, alert: AlertPayload) -> bool:
+        if not self.bot_token or not self.chat_id:
+            logger.debug("telegram_dispatcher_skipped_unconfigured")
+            return False
+
+        icon = "🚨" if alert.severity == AlertSeverity.CRITICAL else ("⚠️" if alert.severity == AlertSeverity.WARNING else "ℹ️")
+        text = (
+            f"{icon} <b>[{alert.severity.value}] {alert.alert_type.value}</b>\n"
+            f"Asset: <code>{alert.asset_id or 'MARKET'}</code>\n"
+            f"Message: {alert.message}\n"
+            f"Time: {alert.time.strftime('%Y-%m-%d %H:%M:%S UTC')}"
+        )
+
+        url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+        payload = {
+            "chat_id": self.chat_id,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_sec) as client:
+                resp = await client.post(url, json=payload)
+                return resp.status_code == 200
+        except Exception as e:
+            logger.warning("telegram_dispatch_failed", error=str(e))
+            return False
+
+
+class EmailDispatcher(BaseAlertDispatcher):
+    """Dispatches alert digests via SMTP or logged email relay."""
+
+    def __init__(self, recipient: str | None = None, smtp_host: str | None = None) -> None:
+        self.recipient = recipient
+        self.smtp_host = smtp_host
+
+    async def dispatch(self, alert: AlertPayload) -> bool:
+        if not self.recipient:
+            return False
+        logger.info(
+            "email_alert_dispatched",
+            recipient=self.recipient,
+            subject=f"[{alert.severity.value}] {alert.alert_type.value} - {alert.asset_id or 'MARKET'}",
+            message=alert.message,
+        )
+        return True
+
+
 # Aliases for convenience
 ConsoleAlertDispatcher = ConsoleDispatcher
 DatabaseAlertDispatcher = DatabaseDispatcher
+WebhookAlertDispatcher = WebhookDispatcher
+TelegramAlertDispatcher = TelegramDispatcher
+EmailAlertDispatcher = EmailDispatcher
 

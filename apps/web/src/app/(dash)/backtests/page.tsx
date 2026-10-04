@@ -12,6 +12,7 @@ import {
   Clock,
   Layers,
   Award,
+  FileText,
 } from "lucide-react";
 
 import { apiClient } from "@/lib/api/client";
@@ -20,6 +21,7 @@ import { DeltaCell, EmptyState, ErrorState, CardSkeleton } from "@/components/da
 import { BacktestForm } from "@/components/domain/BacktestForm";
 import { BacktestJobProgress } from "@/components/domain/BacktestJobProgress";
 import { BacktestCompareModal } from "@/components/domain/BacktestCompareModal";
+import { ParameterSweepCard } from "@/components/domain/ParameterSweepCard";
 
 interface BacktestRunSummary {
   id: string;
@@ -47,6 +49,7 @@ export default function BacktestsPage() {
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
+  const [labMode, setLabMode] = useState<"single" | "sweep">("single");
 
   const fetchRuns = useCallback(async () => {
     setLoadingRuns(true);
@@ -129,6 +132,34 @@ export default function BacktestsPage() {
         )}
       </div>
 
+      {/* Lab Mode Selector */}
+      <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] pb-2 text-xs">
+        <button
+          type="button"
+          onClick={() => setLabMode("single")}
+          className={`py-1.5 px-3 rounded-lg font-semibold transition flex items-center gap-1.5 ${
+            labMode === "single"
+              ? "bg-purple-600/20 text-purple-300 border border-purple-500/40"
+              : "text-[var(--text-muted)] hover:text-white hover:bg-[var(--bg-card)]"
+          }`}
+        >
+          <Play className="w-3.5 h-3.5 fill-current" />
+          <span>Strategy Simulation</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setLabMode("sweep")}
+          className={`py-1.5 px-3 rounded-lg font-semibold transition flex items-center gap-1.5 ${
+            labMode === "sweep"
+              ? "bg-cyan-600/20 text-cyan-300 border border-cyan-500/40"
+              : "text-[var(--text-muted)] hover:text-white hover:bg-[var(--bg-card)]"
+          }`}
+        >
+          <FlaskConical className="w-3.5 h-3.5" />
+          <span>Parameter Sweep (IS / OOS)</span>
+        </button>
+      </div>
+
       {/* Active Job Progress Widget if running */}
       {activeJobId && (
         <BacktestJobProgress
@@ -142,8 +173,12 @@ export default function BacktestsPage() {
         />
       )}
 
-      {/* Simulation Form (Never auto-runs on load) */}
-      <BacktestForm onSubmit={handleLaunchJob} submitting={Boolean(activeJobId)} />
+      {/* Simulation Form or Parameter Sweep Card */}
+      {labMode === "single" ? (
+        <BacktestForm onSubmit={handleLaunchJob} submitting={Boolean(activeJobId)} />
+      ) : (
+        <ParameterSweepCard />
+      )}
 
       {/* Recent Simulation Runs Table */}
       <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 flex flex-col space-y-3">
@@ -238,13 +273,25 @@ export default function BacktestsPage() {
                         {r.win_rate !== null ? `${(r.win_rate <= 1 ? r.win_rate * 100 : r.win_rate).toFixed(1)}%` : EMPTY_FALLBACK}
                       </td>
                       <td className="py-2.5 px-4 text-center">
-                        <Link
-                          href={`/backtests/${r.id}`}
-                          className="inline-flex items-center gap-1 text-[11px] text-purple-400 hover:text-purple-300 font-semibold transition"
-                        >
-                          <span>Analyze</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </Link>
+                        <div className="flex items-center justify-center gap-3">
+                          <Link
+                            href={`/backtests/${r.id}`}
+                            className="inline-flex items-center gap-1 text-[11px] text-purple-400 hover:text-purple-300 font-semibold transition"
+                          >
+                            <span>Analyze</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </Link>
+                          <a
+                            href={`/api/proxy/api/v1/backtests/${r.id}/report?download=true`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 transition"
+                            title="Download reproducible HTML audit report"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>Report</span>
+                          </a>
+                        </div>
                       </td>
                     </tr>
                   );

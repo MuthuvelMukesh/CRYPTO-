@@ -47,6 +47,8 @@ class PaperOrder(Base):
     status: Mapped[str] = mapped_column(String(24), default="PENDING")
     # idempotency_key prevents duplicate order submission
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True, index=True)
+    notes: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    tags: Mapped[str | None] = mapped_column(String(256), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
