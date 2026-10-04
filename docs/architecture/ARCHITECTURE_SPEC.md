@@ -46,15 +46,16 @@ flowchart TD
     end
 
     subgraph Applications & Presentation
-        Backtest & Paper & Scoring --> API[FastAPI Async REST API]
-        API --> Dashboard[Streamlit Quantitative UI & Research Lab]
-        Signals & Risk --> Alerts[Alerting System]
+        Backtest & Paper & Scoring --> API[FastAPI v3 REST & SSE Server]
+        API --> Web[Next.js 15 Quantitative Workstation]
+        Signals & Risk --> Alerts[Multi-Channel Alert Dispatcher: Telegram/Discord/Email]
+        Web & API --> Caddy[Caddy Reverse Proxy & TLS Gateway]
     end
 ```
 
 ### End-to-End Pipeline Stages
 
-1. **Ingestion**: Asynchronous, rate-limited collectors poll raw OHLCV candles, tickers, order book depths, funding rates, open interest, on-chain metrics, and tokenomics.
+1. **Ingestion**: Asynchronous, rate-limited collectors poll raw OHLCV candles, tickers, order book depths, funding rates, open interest, on-chain metrics, and tokenomics with per-exchange circuit breaker failovers.
 2. **Validation**: Enforces integrity checks (no negative prices, no high < low, no duplicate candles, no future timestamps, volume anomaly detection). Invalid records are tagged with status: `GOOD`, `WARNING`, or `INVALID` and quarantined.
 3. **Normalization**: Timestamps coerced strictly to UTC Unix millisecond timestamps; symbols mapped to a standardized global asset registry (e.g., `BTC/USDT` on Binance maps to canonical `asset_id: BTC`).
 4. **Feature Extraction**: High-throughput vectorized computation in Polars/NumPy calculating rolling multi-horizon momentum, volatility, ATR, relative strength against BTC/ETH benchmarks, liquidity turnover, and trend indicators.
@@ -63,8 +64,8 @@ flowchart TD
 7. **Multi-Factor Scoring**: Separate factor weighting models for each asset class, computing explainable sub-scores (0-100) for Momentum, Relative Strength, Trend, Volume, Liquidity, Quality, and Risk.
 8. **Risk Engine**: Validates all incoming candidate signals against portfolio concentration constraints, maximum allowable sector and meme exposure, max drawdown limits, and volatility-adjusted position sizing (Kelly/ATR).
 9. **Backtesting / Paper Trading**:
-   - **Backtester**: Simulates historical trading with point-in-time universe snapshots, eliminating look-ahead and survivorship bias, applying realistic fill models (spread + slippage + fees).
-   - **Paper Trading Broker**: Simulates live order execution against incoming real-time market data without capital at risk, tracking full order lifecycle and margin/equity states.
+   - **Backtester**: Simulates historical trading with point-in-time universe snapshots, eliminating look-ahead and survivorship bias ($t+1$ execution, bracket gaps, Corwin-Schultz and square-root market impact slippage).
+   - **Paper Trading Broker**: Simulates live order execution against incoming real-time market data without capital at risk, tracking full order lifecycle, resting limit orders, and double-entry immutable `LedgerEvent` records.
 10. **Journaling & Observability**: Every signal, order, fill, and portfolio snapshot is written to immutable audit tables with exact feature snapshots.
 
 ---
@@ -74,40 +75,32 @@ flowchart TD
 ```
 crypto-intelligence/
 ├── apps/
-│   ├── api/                            # FastAPI Application
+│   ├── api/                            # FastAPI v3 Application
 │   │   ├── __init__.py
-│   │   ├── main.py                     # ASGI entrypoint
-│   │   ├── deps.py                     # Dependency injection (DB, Redis, settings)
+│   │   ├── main.py                     # ASGI entrypoint, CORS & error handlers
+│   │   ├── deps.py                     # Dependency injection (Auth, DB, Redis, limits)
 │   │   └── routes/
-│   │       ├── health.py
-│   │       ├── assets.py
-│   │       ├── scanner.py
-│   │       ├── scores.py
-│   │       ├── sectors.py
-│   │       ├── regime.py
-│   │       ├── paper.py
-│   │       ├── backtest.py
-│   │       └── alerts.py
-│   └── dashboard/                      # Streamlit Application
-│       ├── app.py                      # Multi-page coordinator & theme config
-│       ├── components/                 # Reusable UI widgets, cards, charts
-│       │   ├── cards.py
-│       │   ├── charts.py
-│       │   └── filters.py
-│       └── views/                      # Dashboard pages
-│           ├── 1_Overview.py
-│           ├── 2_Market_Scanner.py
-│           ├── 3_Meme_Radar.py
-│           ├── 4_Sectors_Rotation.py
-│           ├── 5_Coin_Detail.py
-│           ├── 6_Paper_Portfolio.py
-│           ├── 7_Backtest_Lab.py
-│           └── 8_Alert_Center.py
+│   │       ├── health.py               # Health & telemetry
+│   │       ├── assets.py               # Asset catalog, candles, features & watchlists
+│   │       ├── scanner.py              # Server-side filtered ranking & snapshots
+│   │       ├── scores.py               # Factor scoring & attribution
+│   │       ├── sectors.py              # Sector rotation & breadth
+│   │       ├── regime.py               # Macro regime classifications
+│   │       ├── paper.py                # Virtual broker & double-entry ledger
+│   │       ├── backtest.py             # Async jobs, sweeps & report exports
+│   │       ├── analytics.py            # Correlation, macro stress tests & sector risks
+│   │       └── alerts.py               # Multi-channel alerts & rule triggers
+│   └── web/                            # Next.js 15 Quantitative Workstation
+│       ├── package.json                # React 19, TanStack Query/Table/Virtual, ECharts
+│       └── src/
+│           ├── app/(dash)/             # Workstation views (Scanner, Compare, Backtests, etc.)
+│           ├── components/             # Reusable UI widgets, virtual tables, TradingView charts
+│           └── lib/api/                # Generated OpenAPI TypeScript client
 │
-├── src/                                # Core Domain Library
-│   ├── __init__.py
-│   ├── config/                         # Configuration & Settings
-│   │   ├── __init__.py
+├── docker/                             # Dockerfile.api, Dockerfile.worker, Dockerfile.web, Caddyfile
+├── docs/                               # Architecture, runbooks, and baselines
+├── notebooks/                          # 11 Modernized, CI-tested research notebooks
+└── src/                                # Core Domain Engine Library
 │   │   ├── settings.py                 # Pydantic v2 BaseSettings (.env driven)
 │   │   └── constants.py
 │   ├── database/                       # Database models & connection management

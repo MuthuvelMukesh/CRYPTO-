@@ -49,6 +49,12 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+# ── v3.0 RETIREMENT NOTICE ──────────────────────────────────────────────────
+st.warning(
+    "⚠️ **LEGACY DASHBOARD RETIRED**: The Streamlit prototype has been retired in Platform v3.0. "
+    "Please use the production Next.js quantitative workstation in `apps/web` (running at http://localhost:3000)."
+)
 # ─────────────────────────────────────────────────────────────────────────────
 
 

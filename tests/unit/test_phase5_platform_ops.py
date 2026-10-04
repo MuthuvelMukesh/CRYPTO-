@@ -83,11 +83,10 @@ async def test_timescaledb_sqlite_noop(db_session: AsyncSession) -> None:
 
 def test_docker_security_invariants() -> None:
     """Validate platform Dockerfiles and compose security invariants."""
-    # 1. Dockerfiles must execute as unprivileged appuser (non-root)
+    # 1. Backend Dockerfiles must execute as unprivileged appuser (non-root, 10001)
     dockerfiles = [
         Path("docker/Dockerfile.api"),
         Path("docker/Dockerfile.worker"),
-        Path("docker/Dockerfile.dashboard"),
     ]
 
     for df in dockerfiles:
@@ -95,6 +94,13 @@ def test_docker_security_invariants() -> None:
         content = df.read_text(encoding="utf-8")
         assert "USER appuser" in content, f"{df} is missing non-root 'USER appuser' directive!"
         assert "10001" in content, f"{df} does not declare unprivileged uid/gid 10001!"
+
+    # Frontend Next.js Dockerfile executes as unprivileged nextjs user (non-root, 1001)
+    web_df = Path("docker/Dockerfile.web")
+    assert web_df.exists(), f"Missing dockerfile: {web_df}"
+    web_content = web_df.read_text(encoding="utf-8")
+    assert "USER nextjs" in web_content, f"{web_df} is missing non-root 'USER nextjs' directive!"
+    assert "1001" in web_content, f"{web_df} does not declare unprivileged uid/gid 1001!"
 
     # 2. docker-compose.yml must not expose raw database ports to host by default
     compose_path = Path("docker-compose.yml")

@@ -32,14 +32,14 @@
         }
     }
 
-    # Frontend Dashboard routes -> Streamlit / Next.js
+    # Frontend Quantitative Workstation routes -> Next.js (apps/web)
     handle {
-        reverse_proxy dashboard:8501 {
+        reverse_proxy web:3000 {
             header_up Host {host}
             header_up X-Real-IP {remote}
             header_up X-Forwarded-For {remote}
             header_up X-Forwarded-Proto {scheme}
-            # WebSocket support for interactive dashboards
+            # WebSocket and SSE support
             header_up Upgrade {>Upgrade}
             header_up Connection {>Connection}
         }

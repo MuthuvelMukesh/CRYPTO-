@@ -71,11 +71,11 @@ services:
     networks:
       - internal_network
 
-  dashboard:
+  web:
     build:
       context: .
-      dockerfile: docker/Dockerfile.dashboard
-    container_name: crypto_dashboard
+      dockerfile: docker/Dockerfile.web
+    container_name: crypto_web
     restart: unless-stopped
     depends_on:
       api:
@@ -83,12 +83,13 @@ services:
     env_file:
       - .env
     environment:
-      - API_URL=http://api:8000
-      - DASHBOARD_PORT=8501
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://api:8000
+      - PORT=3000
     expose:
-      - "8501"
+      - "3000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/ || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -127,7 +128,7 @@ services:
     depends_on:
       api:
         condition: service_healthy
-      dashboard:
+      web:
         condition: service_healthy
     ports:
       - "80:80"
